@@ -1,0 +1,123 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login and IP Address List</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .login-popup {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        input[type="password"] {
+            margin: 10px 0;
+            padding: 5px;
+            width: 200px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .response-field {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .ip-list {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .ip-card {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .ip-card:hover {
+            background-color: #e9e9e9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="loginPopup" class="login-popup">
+            <h2>Login</h2>
+            <input type="password" id="passwordInput" placeholder="Enter password from email">
+            <button onclick="login()">Submit</button>
+        </div>
+        <div id="responseField" class="response-field" style="display: none;"></div>
+        <div id="ipList" class="ip-list" style="display: none;"></div>
+    </div>
+
+    <script>
+        async function login() {
+            const password = document.getElementById('passwordInput').value;
+            const response = await fetch(`/login?password=${encodeURIComponent(password.trim())}`);
+            
+if(response.status!=200){
+    alert(response.statusText)
+    return;
+}
+const data = await response.json();
+            if (data[0].publicIps.length) {
+                document.getElementById('loginPopup').style.display = 'none';
+                document.getElementById('responseField').style.display = 'block';
+                document.getElementById('responseField').textContent = data.message;
+                displayIpList(data[0].publicIps);
+            } else {
+                alert('Login failed. Please try again.');
+            }
+        }
+
+        function displayIpList(ipAddresses) {
+            const ipList = document.getElementById('ipList');
+            ipList.style.display = 'flex';
+            ipList.innerHTML = '';
+
+            ipAddresses.forEach(ip => {
+                const card = document.createElement('div');
+                card.className = 'ip-card';
+                card.textContent = ip;
+                card.onclick = () => {
+                    window.location.href = `http://${ip}:9641/`;
+                };
+                ipList.appendChild(card);
+            });
+        }
+    </script>
+</body>
+</html>
