@@ -488,8 +488,8 @@ def main():
 # Service creation arguments with default values
     parser.add_argument('--service-name', type=str, help='Name of the service to create', default='myapp')
     parser.add_argument('--service-dir', type=str, help='path of the service to create files and folders',default='/home/')
-    parser.add_argument('--service-user', type=str, help='path of the service to create files and folders',default='root')
-    parser.add_argument('--service-reset', type=str, help='path of the service to create files and folders',required=False)
+    parser.add_argument('--service-user', type=str, help='name of the service user to create files and folders',default='root')
+    parser.add_argument('--service-reset', type=str, help='True/False if wanted to delete systemd file and restart',required=False)
     
 
 
@@ -546,7 +546,7 @@ def main():
                     # Reload systemd
                     run_sudo_command('sudo systemctl daemon-reload ',sudo_password=args.sudo_pass)
                     print(f"Systemd service {service_name} has been deleted and reloaded")
-                    subprocess.Popen(f"lsof -t -i:9641 | xargs -r kill -9 && {sys.executable} {os.path.abspath(__file__).replace('main.py','customCommandExecutor.py')} {args_string}",shell=True,text=True,)
+                    subprocess.Popen(f"{sys.executable} {os.path.abspath(__file__).replace('main.py','customCommandExecutor.py')} {args_string}",shell=True,text=True,)
                     
                 else:
                     print(f"Service file {service_file_path} does not exist. Nothing to delete.")
@@ -559,23 +559,24 @@ def main():
 
             else:
                 print(f"Systemd service file already exists at {service_file_path} running from there...")
+                environment_setup.clone_code()
+
                 environment_setup.install_dependencies()
-
-                if args.setup=="manual":
+                # if args.setup=="manual":
                     
-                    setup_thread = threading.Thread(target=environment_setup.setup_server)
-                    setup_thread.start()
-                    environment_setup.start_monitoring()
+                #     setup_thread = threading.Thread(target=environment_setup.setup_server)
+                #     setup_thread.start()
+                #     environment_setup.start_monitoring()
 
 
-                else:
-                    monitoring_thread = threading.Thread(target=environment_setup.start_monitoring,daemon=True)
-                    monitoring_thread.start()
-                    environment_setup.clone_code()
-                    setup_thread = threading.Thread(target=environment_setup.setup_server)
-                    setup_thread.start()
-                    
-                    print(f"Monitoring thread is alive: {monitoring_thread.is_alive()}")
+                # else:
+                monitoring_thread = threading.Thread(target=environment_setup.start_monitoring,daemon=True)
+                monitoring_thread.start()
+                
+                setup_thread = threading.Thread(target=environment_setup.setup_server)
+                setup_thread.start()
+                
+                print(f"Monitoring thread is alive: {monitoring_thread.is_alive()}")
 
                 
             
