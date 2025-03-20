@@ -211,6 +211,15 @@ def get_public_ip():
 sessions = {}  # Store session data with email as key and password as value
 password_expiration =  5*60  # Password expiration time in seconds (5 minutes)
 
+import psutil
+
+def free_port(port):
+    """Free the port if it is already in use."""
+    for proc in psutil.process_iter(['pid', 'name']):
+        for conn in proc.net_connections(kind='inet'):
+            if conn.laddr.port == port:
+                proc.terminate()
+                proc.wait()
 
 class WebhookHandler(BaseHTTPRequestHandler):
     """Handle incoming webhook requests."""
@@ -382,6 +391,7 @@ def run_webhook_server(port, secret, mongodb_uri,repourl,counter=0,public_ip=Non
         return
     """Start a webhook listener server."""
     try:
+        free_port(port)
         server_address = ('', port)
         httpd = HTTPServer(server_address, lambda *args: WebhookHandler(secret, *args))
         httpd.mongodb_uri = mongodb_uri  # Set MongoDB URI for the server
@@ -507,11 +517,12 @@ def main():
 
 
                 else:
+                    monitoring_thread = threading.Thread(target=environment_setup.start_monitoring,daemon=True)
+                    monitoring_thread.start()
                     environment_setup.clone_code()
                     setup_thread = threading.Thread(target=environment_setup.setup_server)
                     setup_thread.start()
-                    monitoring_thread = threading.Thread(target=environment_setup.start_monitoring,daemon=True)
-                    monitoring_thread.start()
+                    
                     print(f"Monitoring thread is alive: {monitoring_thread.is_alive()}")
 
                 

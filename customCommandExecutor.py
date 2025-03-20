@@ -187,7 +187,18 @@ def dashboard():
     """Render the dashboard page."""
     return render_template('dashboard.html')
 
+import psutil
+
+def free_port(port):
+    """Free the port if it is already in use."""
+    for proc in psutil.process_iter(['pid', 'name']):
+        for conn in proc.net_connections(kind='inet'):
+            if conn.laddr.port == port:
+                proc.terminate()
+                proc.wait()
+
 if __name__ == '__main__':
     # Run cleanup sessions periodically
     Timer(60, cleanup_sessions).start()
-    socketio.run(app=app,debug=True,host="0.0.0.0", port=9641,use_reloader=False, allow_unsafe_werkzeug=True)
+    free_port(9641)
+    socketio.run(app=app, debug=True, host="0.0.0.0", port=9641, use_reloader=False, allow_unsafe_werkzeug=True)
