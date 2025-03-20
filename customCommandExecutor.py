@@ -189,13 +189,24 @@ def dashboard():
 
 import psutil
 
+import signal
+
 def free_port(port):
-    """Free the port if it is already in use."""
-    for proc in psutil.process_iter(['pid', 'name']):
-        for conn in proc.net_connections(kind='inet'):
-            if conn.laddr.port == port:
-                proc.terminate()
-                proc.wait()
+
+    for proc in psutil.process_iter(attrs=['pid', 'name', 'username']):
+        try:
+            if proc.info['username'] == os.getlogin():  # Only check current user's processes
+                for conn in proc.net_connections(kind='inet'):
+                    if conn.laddr.port == port:
+                        print(f"Process {proc.info['pid']} ({proc.info['name']}) is using port {port}. Terminating...")
+                        os.kill(proc.info['pid'], signal.SIGTERM)  # Gracefully terminate
+                        return True
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            print("access denined or method not found")
+            pass  # Skip processes we can't access or are already gone
+
+    print(f"No process found using port {port}.")
+    return False
 
 if __name__ == '__main__':
     # Run cleanup sessions periodically
