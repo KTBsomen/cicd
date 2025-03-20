@@ -183,6 +183,6 @@ class ManualEnvironmentSetup(EnvironmentSetup):
                             print("No changes detected.")
 
 
-            except:
-                print("Error starting MongoDB change monitoring.")
+            except Exception as e:
+                print("Error starting MongoDB change monitoring.",e)
                 time.sleep(5)
