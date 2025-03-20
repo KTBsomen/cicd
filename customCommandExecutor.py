@@ -190,4 +190,4 @@ def dashboard():
 if __name__ == '__main__':
     # Run cleanup sessions periodically
     Timer(60, cleanup_sessions).start()
-    socketio.run(app=app,debug=True, port=9641,use_reloader=False, allow_unsafe_werkzeug=True)
+    socketio.run(app=app,debug=True,host="0.0.0.0", port=9641,use_reloader=False, allow_unsafe_werkzeug=True)

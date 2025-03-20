@@ -136,51 +136,53 @@ class ManualEnvironmentSetup(EnvironmentSetup):
     def start_monitoring(self):
         """Monitor MongoDB for changes and rerun the server on code changes."""
         print("Starting MongoDB change monitoring...")
-        try:
-            # Connect to MongoClient and monitor the changes
-            client = MongoClient(self.mongodb_uri)
-            db = client['cicd']  # Assume 'cicd' is the database name
-            collection = db['latest_commits']  # Collection to monitor the latest commits
+        while True:
+            try:
+                # Connect to MongoClient and monitor the changes
+                client = MongoClient(self.mongodb_uri)
+                db = client['cicd']  # Assume 'cicd' is the database name
+                collection = db['latest_commits']  # Collection to monitor the latest commits
 
-            # Monitor MongoDB change streams for specific repo_url
-            # pipeline = [
-            #     {'$match': {'fullDocument.repourl': self.repo_url}}
-            # ]
-            with collection.watch(full_document='updateLookup') as stream:
-                for change in stream:
-                    
-                    print("Detected MongoDB change:", change)
+                # Monitor MongoDB change streams for specific repo_url
+                # pipeline = [
+                #     {'$match': {'fullDocument.repourl': self.repo_url}}
+                # ]
+                with collection.watch(full_document='updateLookup') as stream:
+                    for change in stream:
+                        
+                        print("Detected MongoDB change:", change)
 
-                    if 'fullDocument' not in change:
-                        continue
-                    if 'repourl' not in change['fullDocument'] or change['fullDocument']['repourl'] != self.repo_url:
-                        continue
-                    with open('deployment.log', 'a') as log_file:
-                        log_file.write(f"MongoDB change detected: {change}\n")
-                    # Detecting updates in commit information
-                    if change['operationType'] == 'insert' :
-                        print("Code insert detected. Pulling latest changes and restarting the server...")
+                        if 'fullDocument' not in change:
+                            continue
+                        if 'repourl' not in change['fullDocument'] or change['fullDocument']['repourl'] != self.repo_url:
+                            continue
+                        with open('deployment.log', 'a') as log_file:
+                            log_file.write(f"MongoDB change detected: {change}\n")
+                        # Detecting updates in commit information
+                        if change['operationType'] == 'insert' :
+                            print("Code insert detected. Pulling latest changes and restarting the server...")
 
-                        # Pull latest code changes
-                        os.chdir('../')  # Go back to the base directory
-                        self.clone_code()  # Pull latest code and restart the server
-                        try:
-                            threading.Thread(target=self.setup_server).start()
-                        except Exception as e:
-                            print(f"Error starting server: {e}")
-                    elif (change['operationType'] == 'update' and 'commit_hash' in change['updateDescription']['updatedFields'] and not change['updateDescription']['updatedFields']['commit_hash'].startswith("newRun")):
-                        print("Code update detected. Pulling latest changes and restarting the server...")
+                            # Pull latest code changes
+                            os.chdir('../')  # Go back to the base directory
+                            self.clone_code()  # Pull latest code and restart the server
+                            try:
+                                threading.Thread(target=self.setup_server).start()
+                            except Exception as e:
+                                print(f"Error starting server: {e}")
+                        elif (change['operationType'] == 'update' and 'commit_hash' in change['updateDescription']['updatedFields'] and not change['updateDescription']['updatedFields']['commit_hash'].startswith("newRun")):
+                            print("Code update detected. Pulling latest changes and restarting the server...")
 
-                        # Pull latest code changes
-                        os.chdir('../')  # Go back to the base directory
-                        self.clone_code()  # Pull latest code and restart the server
-                        try:
-                            threading.Thread(target=self.setup_server).start()
-                        except Exception as e:
-                            print(f"Error starting server: {e}")
-                    else:
-                        print("No changes detected.")
+                            # Pull latest code changes
+                            os.chdir('../')  # Go back to the base directory
+                            self.clone_code()  # Pull latest code and restart the server
+                            try:
+                                threading.Thread(target=self.setup_server).start()
+                            except Exception as e:
+                                print(f"Error starting server: {e}")
+                        else:
+                            print("No changes detected.")
 
 
-        except:
-            print("Error starting MongoDB change monitoring.")
+            except:
+                print("Error starting MongoDB change monitoring.")
+                time.sleep(5)

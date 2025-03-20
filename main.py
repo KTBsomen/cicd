@@ -220,19 +220,26 @@ class WebhookHandler(BaseHTTPRequestHandler):
         super().__init__(*args, **kwargs)
     def do_GET(self):
         """Handle GET requests with routing logic."""
-        parsed_path = parse.urlparse(self.path)
-        route = parsed_path.path
+        try:
+            parsed_path = parse.urlparse(self.path)
+            route = parsed_path.path
 
-        if route == '/':
-            self.handle_main_page()
-        elif route == '/verify':
-            self.handle_verification()
-        elif route == '/login':
-            self.handle_data_access(parsed_path.query)
-        else:
-            self.send_response(404)
+            if route == '/':
+                self.handle_main_page()
+            elif route == '/verify':
+                self.handle_verification()
+            elif route == '/login':
+                self.handle_data_access(parsed_path.query)
+            else:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b'Not Found')
+        except Exception as e:
+            print(f"Error occurred while handling GET request: {e}")
+            self.send_response(500)
             self.end_headers()
-            self.wfile.write(b'Not Found')
+            self.wfile.write(b'Internal Server Error')
+            
     def handle_verification(self):
         """Handle the verification request."""
         self.send_response(200)
@@ -294,37 +301,42 @@ class WebhookHandler(BaseHTTPRequestHandler):
         with open( os.path.join(os.path.dirname(__file__), 'index.html'), 'rb') as file:
             self.wfile.write(file.read())
     def do_POST(self):
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-
-        # Verify the webhook signature
-        signature = self.headers.get('X-Hub-Signature-256')
-        if not signature:
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b'Missing signature')
-            return
-        
-        if not verify_signature(self.secret, signature, post_data):
-            self.send_response(403)
-            self.end_headers()
-            self.wfile.write(b'Signature verification failed')
-            return
-
-        # Process the webhook payload
         try:
-            payload = json.loads(post_data)
-            commit_hash = payload['head_commit']['id']
-            branch = payload['ref'].split('/')[-1]
-            author = payload['head_commit']['author']['name']
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
 
-            # Update MongoDB
-            update_mongodb(commit_hash, branch, author, self.server.mongodb_uri,self.server.repo_url,self.server.public_ip)
+            # Verify the webhook signature
+            signature = self.headers.get('X-Hub-Signature-256')
+            if not signature:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b'Missing signature')
+                return
+            
+            if not verify_signature(self.secret, signature, post_data):
+                self.send_response(403)
+                self.end_headers()
+                self.wfile.write(b'Signature verification failed')
+                return
 
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'Webhook received and processed')
+            # Process the webhook payload
+            try:
+                payload = json.loads(post_data)
+                commit_hash = payload['head_commit']['id']
+                branch = payload['ref'].split('/')[-1]
+                author = payload['head_commit']['author']['name']
 
+                # Update MongoDB
+                update_mongodb(commit_hash, branch, author, self.server.mongodb_uri,self.server.repo_url,self.server.public_ip)
+
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'Webhook received and processed')
+
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(f"Error processing webhook: {str(e)}".encode())
         except Exception as e:
             self.send_response(500)
             self.end_headers()
@@ -332,32 +344,37 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 def update_mongodb(commit_hash, branch, author, mongodb_uri,repo_url ,public_ip=None):
     """Update MongoDB collection with the latest commit info."""
-    client = MongoClient(mongodb_uri)
-    db = client['cicd']  # Database name from the default URI
-    collection = db['latest_commits']  # Change this to your collection name
+    try:
+        client = MongoClient(mongodb_uri)
+        db = client['cicd']  # Database name from the default URI
+        collection = db['latest_commits']  # Change this to your collection name
 
-    # Update the latest code version
-  # Define the update operations
-    update_operations = {
-        '$set': {
-            'commit_hash': commit_hash,
-            'branch': branch,
-            'updated_at': datetime.now(),
-            'author': author,
+        # Update the latest code version
+    # Define the update operations
+        update_operations = {
+            '$set': {
+                'commit_hash': commit_hash,
+                'branch': branch,
+                'updated_at': datetime.now(),
+                'author': author,
+            }
         }
-    }
 
-    # If a new IP is provided, add it to the 'publicIps' list if it doesn't exist
-    if public_ip:
-        update_operations['$addToSet'] = {'publicIps': public_ip}
+        # If a new IP is provided, add it to the 'publicIps' list if it doesn't exist
+        if public_ip:
+            update_operations['$addToSet'] = {'publicIps': public_ip}
 
-    # Perform the update operation
-    result = collection.update_one(
-        {"repourl": repo_url},
-        update_operations,
-        upsert=True
-    )
-    print("\n========update============\n",result)
+        # Perform the update operation
+        result = collection.update_one(
+            {"repourl": repo_url},
+            update_operations,
+            upsert=True
+        )
+        print("\n========update============\n",result)
+    except Exception as e:
+        print("Error updating MongoDB from webhook handler")
+        print(e)
+        return False
 
 def run_webhook_server(port, secret, mongodb_uri,repourl,counter=0,public_ip=None):
     if counter > 5:
