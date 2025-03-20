@@ -261,7 +261,7 @@ def free_port(port):
     for proc in psutil.process_iter(attrs=['pid', 'name', 'username']):
         try:
             if proc.info['username'] == current_user:  # Only check processes of the current user
-                for conn in proc.connections(kind='inet'):
+                for conn in proc.net_connections(kind='inet'):
                     if conn.laddr.port == port:
                         print(f"Process {proc.info['pid']} ({proc.info['name']}) is using port {port}. Terminating...")
                         os.kill(proc.info['pid'], signal.SIGTERM)  # Gracefully terminate
@@ -453,7 +453,8 @@ def run_webhook_server(port, secret, mongodb_uri,repourl,counter=0,public_ip=Non
         httpd.serve_forever()
     except:
         print("OSError: Webhook listener already listening. killing it...")
-        subprocess.call(f"lsof -t -i:{port} | xargs -r kill -9 ",shell=True)
+        free_port(port)
+        # subprocess.call(f"lsof -t -i:{port} | xargs -r kill -9 ",shell=True)
         run_webhook_server(port, secret, mongodb_uri,repourl,counter=counter+1,public_ip=public_ip)
         
 

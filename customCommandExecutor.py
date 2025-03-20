@@ -199,7 +199,7 @@ def free_port(port):
     for proc in psutil.process_iter(attrs=['pid', 'name', 'username']):
         try:
             if proc.info['username'] == current_user:  # Only check processes of the current user
-                for conn in proc.connections(kind='inet'):
+                for conn in proc.net_connections(kind='inet'):
                     if conn.laddr.port == port:
                         print(f"Process {proc.info['pid']} ({proc.info['name']}) is using port {port}. Terminating...")
                         os.kill(proc.info['pid'], signal.SIGTERM)  # Gracefully terminate
