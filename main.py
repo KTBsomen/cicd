@@ -4,7 +4,7 @@ import shutil
 import sys
 import importlib.util
 # List of required dependencies
-REQUIRED_MODULES = ["psutil", "requests", "flask",'pymongo']  # Add all needed modules
+REQUIRED_MODULES = ["psutil", "requests", "flask",'pymongo',"flask_socketio"]  # Add all needed modules
 
 # Function to check and install missing packages
 def ensure_pip():
@@ -559,24 +559,23 @@ def main():
 
             else:
                 print(f"Systemd service file already exists at {service_file_path} running from there...")
-                environment_setup.clone_code()
-
                 environment_setup.install_dependencies()
-                # if args.setup=="manual":
+
+                if args.setup=="manual":
                     
-                #     setup_thread = threading.Thread(target=environment_setup.setup_server)
-                #     setup_thread.start()
-                #     environment_setup.start_monitoring()
+                    setup_thread = threading.Thread(target=environment_setup.setup_server)
+                    setup_thread.start()
+                    environment_setup.start_monitoring()
 
 
-                # else:
-                monitoring_thread = threading.Thread(target=environment_setup.start_monitoring,daemon=True)
-                monitoring_thread.start()
-                
-                setup_thread = threading.Thread(target=environment_setup.setup_server)
-                setup_thread.start()
-                
-                print(f"Monitoring thread is alive: {monitoring_thread.is_alive()}")
+                else:
+                    monitoring_thread = threading.Thread(target=environment_setup.start_monitoring,daemon=True)
+                    monitoring_thread.start()
+                    environment_setup.clone_code()
+                    setup_thread = threading.Thread(target=environment_setup.setup_server)
+                    setup_thread.start()
+                    
+                    print(f"Monitoring thread is alive: {monitoring_thread.is_alive()}")
 
                 
             
