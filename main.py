@@ -253,18 +253,20 @@ import psutil
 
 import signal
 
+import getpass  # Use this instead of os.getlogin()
+
 def free_port(port):
+    current_user = getpass.getuser()  # Get the current username
 
     for proc in psutil.process_iter(attrs=['pid', 'name', 'username']):
         try:
-            if proc.info['username'] == os.getlogin():  # Only check current user's processes
-                for conn in proc.net_connections(kind='inet'):
+            if proc.info['username'] == current_user:  # Only check processes of the current user
+                for conn in proc.connections(kind='inet'):
                     if conn.laddr.port == port:
                         print(f"Process {proc.info['pid']} ({proc.info['name']}) is using port {port}. Terminating...")
                         os.kill(proc.info['pid'], signal.SIGTERM)  # Gracefully terminate
                         return True
         except (psutil.AccessDenied, psutil.NoSuchProcess):
-            print("access denined or method not found")
             pass  # Skip processes we can't access or are already gone
 
     print(f"No process found using port {port}.")
