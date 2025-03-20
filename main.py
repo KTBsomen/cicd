@@ -2,6 +2,7 @@ import subprocess
 import importlib
 import shutil
 import sys
+import importlib.util
 # List of required dependencies
 REQUIRED_MODULES = ["psutil", "requests", "flask",'pymongo']  # Add all needed modules
 
