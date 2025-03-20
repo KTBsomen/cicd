@@ -30,7 +30,7 @@ parser.add_argument('--repo-url', type=str, help='Repository URL for the code', 
 
 # MongoDB URI argument with default value
 parser.add_argument('--mongodb-uri', type=str, help='MongoDB URI for change monitoring', 
-                    default='mongodb+srv://boutiquelp24:tOVIkcoRqLsw03p9@boutiquemain.7rglrir.mongodb.net/cicd?retryWrites=true&w=majority&appName=boutiqueMain')
+                    default='mongodb+srv://your mongodb url')
 
 # Git credentials for private repositories
 parser.add_argument('--git-username', type=str, help='Git username for private repos', required=False)
@@ -42,9 +42,9 @@ parser.add_argument('--smtp-host', type=str, help='SMTP host for sending error e
 parser.add_argument('--smtp-port', type=int, help='SMTP port for sending error emails', 
                     default=465)
 parser.add_argument('--smtp-user', type=str, help='SMTP username for sending error emails', 
-                    default='hello@wowcircle.in')
+                    default='test@wowcircle.in')
 parser.add_argument('--smtp-pass', type=str, help='SMTP password for sending error emails', 
-                    default='WOWCIRCLE@123#')
+                    default='Epassword')
 parser.add_argument('--admin-email', type=str, help='Admin email to send error logs', required=True)
 parser.add_argument('--user', type=str, help='username of the code runner', required=False)
 parser.add_argument('--sudo-pass', type=str, help='sudo password, we need this as we have to install packages', required=False)
