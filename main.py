@@ -1,44 +1,7 @@
+
+from dependency_manager import ensure_dependencies
+ensure_dependencies()
 import subprocess
-import importlib
-import shutil
-import sys
-import importlib.util
-# List of required dependencies
-REQUIRED_MODULES = ["psutil", "requests", "flask",'pymongo',"flask_socketio"]  # Add all needed modules
-
-# Function to check and install missing packages
-def ensure_pip():
-    """Ensure pip is installed and available."""
-    if shutil.which("pip"):
-        return "pip"
-    elif shutil.which("pip3"):
-        return "pip3"
-    else:
-        try:
-            print("pip not found. Attempting to install pip...")
-            subprocess.check_call([sys.executable, "-m", "ensurepip"])
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-            return "pip"
-        except Exception:
-            print("Failed to install pip. Please install it manually.")
-            sys.exit(1)
-
-def install_missing_packages():
-    """Check and install missing dependencies."""
-    missing_modules = [mod for mod in REQUIRED_MODULES if importlib.util.find_spec(mod) is None]
-    
-    if missing_modules:
-        pip_cmd = ensure_pip()
-        print(f"Installing missing dependencies: {', '.join(missing_modules)}")
-        try:
-            subprocess.check_call([sys.executable, "-m", pip_cmd, "install", *missing_modules])
-            print("All dependencies installed successfully.")
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to install packages: {e}")
-            sys.exit(1)
-
-# Install before executing main code
-install_missing_packages()
 import argparse
 import json
 import os
@@ -50,11 +13,18 @@ import hashlib
 from email.mime.text import MIMEText
 import socket
 import string
-
+import shutil
 import threading
 import time
 from urllib import parse, request
-
+import subprocess
+import importlib
+import shutil
+import sys
+import os
+import venv
+import importlib.util
+from pathlib import Path
 from pymongo import MongoClient
 from plugins import plugins
 
