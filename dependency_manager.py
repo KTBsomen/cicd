@@ -1,156 +1,285 @@
-import subprocess
-import importlib
-import shutil
-import sys
+#!/usr/bin/env python3
+"""
+Dependency Manager for CICD
+Handles automatic installation and management of Python dependencies
+"""
+
 import os
-import venv
-import importlib.util
+import sys
+import subprocess
+import shutil
 from pathlib import Path
+import importlib.util
 
-# List of required dependencies
-REQUIRED_MODULES = ["psutil", "requests", "flask", "pymongo", "flask_socketio"]
+# Required packages for the CICD system
+REQUIRED_PACKAGES = [
+    'psutil',
+    'requests', 
+    'flask',
+    'pymongo',
+    'flask_socketio'
+]
 
-# Virtual environment path
-VENV_PATH = Path.home() / ".local" / "venvs" / "project_env"
-
-def is_externally_managed():
-    """Check if Python environment is externally managed."""
+def check_package_installed(package_name):
+    """Check if a package is already installed"""
     try:
-        # Check for EXTERNALLY-MANAGED file
-        python_lib_path = Path(sys.executable).parent.parent / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}"
-        externally_managed_file = python_lib_path / "EXTERNALLY-MANAGED"
-        return externally_managed_file.exists()
-    except Exception:
-        return False
-
-def is_in_venv():
-    """Check if we're already running in a virtual environment."""
-    return hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
-
-def create_virtual_environment():
-    """Create a virtual environment if it doesn't exist."""
-    if not VENV_PATH.exists():
-        print(f"Creating virtual environment at {VENV_PATH}")
-        try:
-            venv.create(VENV_PATH, with_pip=True)
-            print("Virtual environment created successfully.")
-        except Exception as e:
-            print(f"Failed to create virtual environment: {e}")
-            sys.exit(1)
-
-def get_venv_executables():
-    """Get the Python and pip executables from the virtual environment."""
-    if os.name == 'nt':  # Windows
-        python_exe = VENV_PATH / "Scripts" / "python.exe"
-        pip_exe = VENV_PATH / "Scripts" / "pip.exe"
-    else:  # Unix-like systems
-        python_exe = VENV_PATH / "bin" / "python"
-        pip_exe = VENV_PATH / "bin" / "pip"
-    
-    return str(python_exe), str(pip_exe)
-
-def restart_in_venv():
-    """Restart the current script in the virtual environment."""
-    venv_python, _ = get_venv_executables()
-    
-    print(f"Restarting script in virtual environment...")
-    print(f"Using Python: {venv_python}")
-    
-    # Re-execute the current script with the venv Python
-    os.execv(venv_python, [venv_python] + sys.argv)
-
-def check_module_availability(module_name):
-    """Check if a module is available in the current Python environment."""
-    try:
-        importlib.import_module(module_name)
+        importlib.import_module(package_name.replace('-', '_'))
         return True
     except ImportError:
         return False
 
+def get_missing_packages():
+    """Get list of missing packages"""
+    missing = []
+    for package in REQUIRED_PACKAGES:
+        if not check_package_installed(package):
+            missing.append(package)
+    return missing
+
+def is_in_virtual_env():
+    """Check if we're running in a virtual environment"""
+    return hasattr(sys, 'real_prefix') or (
+        hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix
+    )
+
+def is_externally_managed():
+    """Check if Python environment is externally managed (like on Ubuntu 23.04+)"""
+    try:
+        import sysconfig
+        stdlib_path = sysconfig.get_path('stdlib')
+        marker_file = Path(stdlib_path).parent / 'EXTERNALLY-MANAGED'
+        return marker_file.exists()
+    except:
+        return False
+
+def create_virtual_environment():
+    """Create a virtual environment for the project"""
+    venv_path = Path.home() / ".local" / "venvs" / "project_env"
+    
+    print(f"Creating virtual environment at {venv_path}")
+    
+    # Remove existing broken venv if it exists
+    if venv_path.exists():
+        print("Removing existing virtual environment...")
+        shutil.rmtree(venv_path)
+    
+    # Create parent directories
+    venv_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Create virtual environment
+    try:
+        subprocess.check_call([
+            sys.executable, "-m", "venv", str(venv_path)
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(f"✓ Virtual environment created successfully")
+    except subprocess.CalledProcessError as e:
+        print(f"✗ Failed to create virtual environment: {e}")
+        return None
+    except FileNotFoundError:
+        print("✗ Python venv module not found. Installing python3-venv...")
+        try:
+            subprocess.check_call([
+                "sudo", "apt", "update"
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.check_call([
+                "sudo", "apt", "install", "-y", "python3-venv"
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            print("✓ python3-venv installed, retrying venv creation...")
+            subprocess.check_call([
+                sys.executable, "-m", "venv", str(venv_path)
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError:
+            print("✗ Failed to install python3-venv or create venv")
+            return None
+    
+    # Verify the virtual environment was created properly
+    pip_path = venv_path / "bin" / "pip"
+    python_path = venv_path / "bin" / "python"
+    
+    if not pip_path.exists() or not python_path.exists():
+        print(f"✗ Virtual environment creation incomplete")
+        print(f"  pip exists: {pip_path.exists()}")
+        print(f"  python exists: {python_path.exists()}")
+        return None
+    
+    return venv_path
+
 def install_packages_in_venv():
-    """Install missing packages in the virtual environment."""
-    venv_python, venv_pip = get_venv_executables()
+    """Install packages in virtual environment"""
+    missing_packages = get_missing_packages()
     
-    # Check which modules are missing in the venv
-    missing_modules = []
-    for mod in REQUIRED_MODULES:
-        try:
-            result = subprocess.run([venv_python, "-c", f"import {mod}"], 
-                                  capture_output=True, text=True)
-            if result.returncode != 0:
-                missing_modules.append(mod)
-        except Exception:
-            missing_modules.append(mod)
+    if not missing_packages:
+        print("✓ All required packages are already installed")
+        return True
     
-    if missing_modules:
-        print(f"Installing missing dependencies in venv: {', '.join(missing_modules)}")
-        try:
-            subprocess.check_call([venv_pip, "install", *missing_modules])
-            print("All dependencies installed successfully in virtual environment.")
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to install packages in venv: {e}")
-            sys.exit(1)
+    print(f"Missing dependencies detected: {', '.join(missing_packages)}")
+    
+    # Create virtual environment
+    venv_path = create_virtual_environment()
+    if not venv_path:
+        return False
+    
+    pip_path = venv_path / "bin" / "pip"
+    python_path = venv_path / "bin" / "python"
+    
+    try:
+        # Upgrade pip first
+        print("Upgrading pip...")
+        subprocess.check_call([
+            str(python_path), "-m", "pip", "install", "--upgrade", "pip"
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Install missing packages
+        print(f"Installing missing dependencies in venv: {', '.join(missing_packages)}")
+        subprocess.check_call([
+            str(pip_path), "install"
+        ] + missing_packages, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        print("✓ All dependencies installed successfully in virtual environment")
+        
+        # Add venv to Python path for current session
+        site_packages = venv_path / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+        if site_packages.exists() and str(site_packages) not in sys.path:
+            sys.path.insert(0, str(site_packages))
+        
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"✗ Failed to install packages in virtual environment: {e}")
+        return False
+
+def install_packages_user():
+    """Install packages using --user flag"""
+    missing_packages = get_missing_packages()
+    
+    if not missing_packages:
+        print("✓ All required packages are already installed")
+        return True
+    
+    print(f"Installing missing dependencies with --user: {', '.join(missing_packages)}")
+    
+    try:
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", "--user"
+        ] + missing_packages, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        print("✓ All dependencies installed successfully with --user")
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"✗ Failed to install packages with --user: {e}")
+        return False
 
 def install_packages_system():
-    """Install packages in system Python (for non-externally managed systems)."""
-    missing_modules = [mod for mod in REQUIRED_MODULES if not check_module_availability(mod)]
+    """Install packages system-wide (requires sudo)"""
+    missing_packages = get_missing_packages()
     
-    if missing_modules:
-        print(f"Installing missing dependencies: {', '.join(missing_modules)}")
-        try:
-            # Try regular pip install first
-            subprocess.check_call([sys.executable, "-m", "pip", "install", *missing_modules])
-        except subprocess.CalledProcessError:
-            try:
-                # Fallback to --user install
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", *missing_modules])
-            except subprocess.CalledProcessError as e:
-                print(f"Failed to install packages: {e}")
-                sys.exit(1)
-        print("All dependencies installed successfully.")
+    if not missing_packages:
+        print("✓ All required packages are already installed")
+        return True
+    
+    print(f"Installing missing dependencies system-wide: {', '.join(missing_packages)}")
+    print("⚠️  This requires sudo privileges")
+    
+    try:
+        subprocess.check_call([
+            "sudo", sys.executable, "-m", "pip", "install"
+        ] + missing_packages)
+        
+        print("✓ All dependencies installed successfully system-wide")
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"✗ Failed to install packages system-wide: {e}")
+        return False
 
 def setup_environment():
-    """Main function to set up the environment and ensure dependencies."""
+    """Set up the Python environment with required dependencies"""
+    print("Setting up environment...")
     
-    # If we're dealing with an externally managed environment
-    if is_externally_managed():
+    # Check current environment status
+    in_venv = is_in_virtual_env()
+    externally_managed = is_externally_managed()
+    
+    print(f"In virtual environment: {in_venv}")
+    print(f"Externally managed Python: {externally_managed}")
+    
+    # Strategy 1: If already in venv, install directly
+    if in_venv:
+        print("Already in virtual environment, installing packages...")
+        missing_packages = get_missing_packages()
+        if missing_packages:
+            try:
+                subprocess.check_call([
+                    sys.executable, "-m", "pip", "install"
+                ] + missing_packages)
+                print("✓ Packages installed in current virtual environment")
+                return True
+            except subprocess.CalledProcessError:
+                print("✗ Failed to install in current virtual environment")
+                return False
+        return True
+    
+    # Strategy 2: Try virtual environment approach
+    if externally_managed or not in_venv:
         print("Detected externally managed Python environment.")
+        print("Not in virtual environment. Setting up...")
         
-        # If we're not already in a venv, we need to create one and restart
-        if not is_in_venv():
-            print("Not in virtual environment. Setting up...")
-            create_virtual_environment()
-            install_packages_in_venv()
-            restart_in_venv()  # This will restart the script in the venv
-        else:
-            # We're already in a venv, just ensure packages are installed
-            print("Already in virtual environment. Checking dependencies...")
-            missing_modules = [mod for mod in REQUIRED_MODULES if not check_module_availability(mod)]
-            if missing_modules:
-                print(f"Installing missing modules: {', '.join(missing_modules)}")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", *missing_modules])
-    else:
-        # Traditional system - install normally
-        print("Using system Python environment.")
-        install_packages_system()
+        if install_packages_in_venv():
+            return True
     
-    print("Environment setup complete. All dependencies are available.")
+    # Strategy 3: Try --user installation
+    print("Virtual environment setup failed, trying --user installation...")
+    if install_packages_user():
+        return True
+    
+    # Strategy 4: System-wide installation (last resort)
+    print("--user installation failed, trying system-wide installation...")
+    if install_packages_system():
+        return True
+    
+    print("✗ All installation methods failed")
+    return False
 
 def ensure_dependencies():
-    """Public function to call from  main application."""
-    # Check if all required modules are available
-    missing_modules = [mod for mod in REQUIRED_MODULES if not check_module_availability(mod)]
+    """Main function to ensure all dependencies are available"""
+    print("CICD Dependency Manager")
+    print("=" * 50)
     
-    if missing_modules:
-        print(f"Missing dependencies detected: {', '.join(missing_modules)}")
-        setup_environment()
+    missing_packages = get_missing_packages()
+    
+    if not missing_packages:
+        print("✓ All required dependencies are already available")
+        return True
+    
+    print(f"Missing packages: {', '.join(missing_packages)}")
+    
+    success = setup_environment()
+    
+    if success:
+        print("=" * 50)
+        print("✓ Environment setup completed successfully")
+        
+        # Verify installation
+        still_missing = get_missing_packages()
+        if still_missing:
+            print(f"⚠️  Some packages may still be missing: {', '.join(still_missing)}")
+            print("You may need to restart your Python session or check your PYTHONPATH")
+            return False
+        else:
+            print("✓ All dependencies verified and available")
+            return True
     else:
-        print("All dependencies are available.")
+        print("=" * 50)
+        print("✗ Environment setup failed")
+        print("\nManual installation options:")
+        print(f"1. pip install --user {' '.join(missing_packages)}")
+        print(f"2. sudo pip install {' '.join(missing_packages)}")
+        print("3. Create and activate a virtual environment manually:")
+        print("   python3 -m venv ~/.local/venvs/project_env")
+        print("   source ~/.local/venvs/project_env/bin/activate")
+        print(f"   pip install {' '.join(missing_packages)}")
+        return False
 
-# Auto-setup when imported
 if __name__ == "__main__":
-    setup_environment()
-else:
-    # When imported as a module, check dependencies
     ensure_dependencies()
-
