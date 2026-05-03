@@ -10,8 +10,8 @@ def generate_signature(secret, payload):
     return f'sha256={hmac_digest}'
 
 # Configuration
-url = 'http://localhost:8000'  # Replace with your server URL if different
-secret = '1234'
+url = 'http://127.0.0.1:8002'  # Replace with your server URL if different
+secret = '1234m'
 payload = {
     "ref": "refs/heads/main",
     "head_commit": {
