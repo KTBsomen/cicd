@@ -134,8 +134,18 @@ func (c *Config) Parse() {
 		fmt.Println("Error: --smtp-user is not a valid email address.")
 		os.Exit(1)
 	}
-
 	if c.PublicIP == "" {
 		c.PublicIP = GetPublicIP()
 	}
+}
+
+func (C *Config) String() string {
+	var argsBuilder strings.Builder
+	flag.VisitAll(func(f *flag.Flag) {
+		// f.Name is the flag name, f.Value is the value provided
+		fmt.Fprintf(&argsBuilder, "--%s=%v ", f.Name, f.Value)
+	})
+
+	finalString := strings.TrimSpace(argsBuilder.String())
+	return finalString
 }
