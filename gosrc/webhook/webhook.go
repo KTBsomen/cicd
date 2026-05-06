@@ -48,5 +48,6 @@ func StartWebhook(cfg *parser.Config) {
 		EnablePrefork:         false,
 	}); err != nil {
 		fmt.Printf("Error starting webhook listener: %v\n", err)
+		panic(err)
 	}
 }

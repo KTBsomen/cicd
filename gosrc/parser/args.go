@@ -16,6 +16,7 @@ type Config struct {
 	// Required
 	Setup      string
 	RepoURL    string
+	Branch     string
 	AdminEmail string
 
 	// MongoDB
@@ -86,6 +87,7 @@ func (c *Config) Parse() {
 	// Required Flags
 	flag.StringVar(&c.Setup, "setup", "", "Type of setup (e.g., node, python, manual) [Required]")
 	flag.StringVar(&c.RepoURL, "repo-url", "", "Repository URL for the code [Required]")
+	flag.StringVar(&c.Branch, "branch", "main", "Branch for the code [Required]")
 	flag.StringVar(&c.AdminEmail, "admin-email", "", "Admin email to send error logs [Required]")
 
 	// MongoDB with default

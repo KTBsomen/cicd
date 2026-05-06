@@ -14,17 +14,28 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type User struct {
-	ID        int
-	Name      string
-	Email     string
-	ServiceID int
-	CreatedAt time.Time
+type Project struct {
+	ID             int
+	ServiceName    string
+	ServiceUser    string
+	RepoURL        string
+	Branch         string
+	PublicIp       string
+	Webhook        string
+	AdminEmail     string
+	ServiceDir     string
+	LastCommitHash string
+	LastCommitMsg  string
+	History        any
+	CreatedAt      time.Time
 }
 
 var DB *sql.DB
 
 func InitDB(cfg *parser.Config) error {
+	if DB != nil {
+		return nil
+	}
 	// Add this before sql.Open
 	dbDir := "/etc/cicd/data"
 	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
@@ -81,4 +92,98 @@ func InitDB(cfg *parser.Config) error {
 	logger.Info("Database initialized", cfg)
 	fmt.Println(dbPath)
 	return nil
+}
+
+// RegisterProject saves the configuration from CLI/Dashboard into SQLite.
+// It uses an "Upsert" (Insert or Update) so it doesn't create duplicates.
+func RegisterProject(cfg *parser.Config) error {
+	query := `
+	INSERT INTO users (
+		serviceName, serviceUser, repoURL, publicIp, 
+		webhook, adminEmail, serviceDir
+	) VALUES (?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(repoURL, branch, serviceName) DO UPDATE SET
+		serviceUser=excluded.serviceUser,
+		publicIp=excluded.publicIp,
+		adminEmail=excluded.adminEmail,
+		serviceDir=excluded.serviceDir;`
+
+	_, err := DB.Exec(query,
+		cfg.ServiceName,
+		cfg.ServiceUser,
+		cfg.RepoURL,
+		cfg.PublicIP,
+		strconv.Itoa(cfg.Webhook),
+		cfg.AdminEmail,
+		cfg.ServiceDir,
+	)
+
+	if err != nil {
+		logger.Error(fmt.Sprintf("❌ DB Register Failed: %v", err), cfg)
+		return err
+	}
+
+	logger.Info(fmt.Sprintf("📝 Project '%s' registered in SQLite", cfg.ServiceName), cfg)
+	return nil
+}
+
+// GetAllProjects reads every project from the database so the orchestrator can start them.
+func GetAllProjects() ([]Project, error) {
+	rows, err := DB.Query("SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir FROM users")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []Project
+	for rows.Next() {
+		var p Project
+		err := rows.Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir)
+		if err != nil {
+			continue
+		}
+		projects = append(projects, p)
+	}
+	return projects, nil
+}
+func (p *Project) ToConfig() *parser.Config {
+	wh, _ := strconv.Atoi(p.Webhook)
+	errCount := 0
+	if p.AdminEmail == "" {
+		logger.Error("Admin Email is empty", nil)
+		errCount++
+	}
+	if p.ServiceDir == "" {
+		logger.Error("Service Dir is empty", nil)
+		errCount++
+	}
+	if p.PublicIp == "" {
+		logger.Warn("Public IP is empty", nil)
+	}
+	if p.RepoURL == "" {
+		logger.Error("Repo URL is empty", nil)
+		errCount++
+	}
+	if p.ServiceName == "" {
+		logger.Error("Service Name is empty", nil)
+		errCount++
+	}
+	if p.ServiceUser == "" {
+		logger.Error("Service User is empty", nil)
+		errCount++
+	}
+
+	if errCount > 0 {
+		panic("Some Configs are empty")
+	}
+	return &parser.Config{
+		ServiceName: p.ServiceName,
+		ServiceUser: p.ServiceUser,
+		RepoURL:     p.RepoURL,
+		PublicIP:    p.PublicIp,
+		Webhook:     wh,
+		Branch:      p.Branch,
+		AdminEmail:  p.AdminEmail,
+		ServiceDir:  p.ServiceDir,
+	}
 }

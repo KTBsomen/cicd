@@ -46,7 +46,11 @@ func InitLogger(cfg *parser.Config) {
 func emit(level, color, msg string, cfg *parser.Config) {
 	mu.Lock()
 	defer mu.Unlock()
-
+	if cfg == nil {
+		cfg = &parser.Config{
+			ServiceName: "System",
+		}
+	}
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
 	// 1. Console Output (With ANSI Colors)

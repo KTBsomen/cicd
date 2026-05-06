@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"syscall"
 
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
@@ -34,8 +36,45 @@ func GetResourceLimits(cpuPercent int, ramPercent int) (int, int64) {
 	return cpuQuota, ramLimit
 }
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "list" {
+		database.InitDB(&parser.Config{})
+		projects, _ := database.GetAllProjects()
+		t := table.NewWriter()
+		t.SetOutputMirror(os.Stdout)
+
+		// 1. Add Header with Bold/Cyan styling
+		t.AppendHeader(table.Row{"ID", "SERVICE NAME", "REPO URL", "BRANCH", "SERVICE DIR", "SERVICE USER"})
+		// 2. Add Rows with "Zebra" stripes using colors
+		for i, p := range projects {
+			// Switch between Cyan and White for the text
+			rowColor := text.FgHiCyan
+			if i%2 == 0 {
+				rowColor = text.FgHiWhite
+			}
+			t.AppendRow(table.Row{
+				rowColor.Sprint(p.ID),
+				rowColor.Sprint(p.ServiceName),
+				rowColor.Sprint(p.RepoURL),
+				rowColor.Sprint(p.Branch),
+				rowColor.Sprint(p.ServiceDir),
+				rowColor.Sprint(p.ServiceUser),
+			})
+			t.AppendSeparator() // The magic "Continuous Line"
+		}
+		// 3. Customize the look (Colors & Borders)
+		style := table.StyleRounded
+		style.Format.Header = text.FormatUpper                       // Make headers UPPERCASE
+		style.Color.Header = text.Colors{text.FgHiYellow, text.Bold} // Yellow Bold Header
+		style.Color.Border = text.Colors{text.FgHiBlack}             // Subtle Dim Borders
+
+		t.SetStyle(style)
+		t.Render()
+		return
+	}
 	var config parser.Config
 	config.Parse()
+	database.InitDB(&config)
+
 	if !isRunningUnderSystemd() {
 		newPath, err := InstallBinaryToSystem(&config)
 		if err != nil {
@@ -46,6 +85,7 @@ func main() {
 			}
 
 		}
+		database.RegisterProject(&config)
 		fmt.Println("🛠️  Running in Setup Mode...")
 		serviceError := actions.CreateServicefile(&config, newPath)
 		if serviceError != nil {
@@ -57,20 +97,26 @@ func main() {
 			logger.Error(fmt.Sprintf("Failed to reload systemd: %v", err), &config)
 			panic(err)
 		}
-		if err := exec.Command("systemctl", "enable", config.ServiceName).Run(); err != nil {
+		if err := exec.Command("systemctl", "enable", "cicd").Run(); err != nil {
 			logger.Error(fmt.Sprintf("Failed to enable service: %v", err), &config)
 			panic(err)
 		}
-		if err := exec.Command("systemctl", "start", config.ServiceName).Run(); err != nil {
-			logger.Error(fmt.Sprintf("Failed to start service: %v", err), &config)
+		if err := exec.Command("systemctl", "restart", "cicd").Run(); err != nil {
+			logger.Error(fmt.Sprintf("Failed to start/restart service: %v", err), &config)
 			panic(err)
 		}
 		logger.Info("🚀 Service started and enabled on boot!", &config)
 
 		os.Exit(0)
 	}
+	// 2. LOAD all projects (including ones from yesterday)
+	projects, _ := database.GetAllProjects()
+	// 3. START a manager for each one
+	for _, p := range projects {
+		// We'll build this worker next!
+		fmt.Println(p)
+	}
 
-	database.InitDB(&config)
 	go webhook.StartWebhook(&config)
 
 	fmt.Println(config.AdminEmail)
@@ -107,7 +153,7 @@ func InstallBinaryToSystem(cfg *parser.Config) (string, error) {
 		return "", fmt.Errorf("failed to open source binary: %v", err)
 	}
 	defer input.Close()
-
+	os.Remove(targetPath)
 	// 3. Create the destination (using sudo power)
 	// We use os.OpenFile to set 0755 permissions (executable)
 	output, err := os.OpenFile(targetPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)

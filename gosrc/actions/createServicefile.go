@@ -13,21 +13,20 @@ func CreateServicefile(cfg *parser.Config, binaryPath string) error {
 
 	// 2. Wrap everything in a map
 	data := map[string]any{
-		"Cfg":        cfg,
-		"ServiceDir": execPath,
+		"Cfg":     cfg,
+		"command": execPath,
 	}
 	logger.Info("[Creating Systemd Service]", cfg)
 	content := `[Unit]
-Description={{.Cfg.ServiceName}}
+Description=CICD Orchestrator Manager
 After=network.target
-
 [Service]
-ExecStart={{.ServiceDir}}
-WorkingDirectory={{.Cfg.ServiceDir}}
+ExecStart={{.command}}
+# The manager stays in its own directory
+WorkingDirectory=/etc/cicd/
 User=root
 Restart=always
 RestartSec=5
-
 [Install]
 WantedBy=multi-user.target
 `
@@ -42,7 +41,7 @@ WantedBy=multi-user.target
 	fmt.Println(content)
 
 	//Write to file at /etc/systemd/system/{{service_name}}.service
-	err = os.WriteFile("/etc/systemd/system/"+cfg.ServiceName+".service", []byte(content), 0644)
+	err = os.WriteFile("/etc/systemd/system/cicd.service", []byte(content), 0644)
 	if err != nil {
 		logger.Error("[Failed to write servicefile]", cfg)
 		return err
