@@ -86,6 +86,7 @@ func main() {
 
 		}
 		database.RegisterProject(&config)
+		database.RegisterToMongo(&config)
 		fmt.Println("🛠️  Running in Setup Mode...")
 		serviceError := actions.CreateServicefile(&config, newPath)
 		if serviceError != nil {
@@ -118,6 +119,10 @@ func main() {
 	}
 
 	go webhook.StartWebhook(&config)
+	go database.WatchChanges(&config, func(projectName string) {
+		fmt.Println("Remote change detected for project:", projectName)
+		actions.GitPull(&config)
+	})
 
 	fmt.Println(config.AdminEmail)
 	fmt.Println(config.PublicIP)

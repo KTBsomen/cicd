@@ -8,6 +8,7 @@ import (
 	"gosrc/parser"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/ktbsomen/jsjson"
 )
 
 func StartWebhook(cfg *parser.Config) {
@@ -27,7 +28,22 @@ func StartWebhook(cfg *parser.Config) {
 
 			// Read the request body
 			bodyBytes := c.Body()
-
+			payload := jsjson.MustParse(string(bodyBytes))
+			commit_hash, err1 := payload.Get("head_commit", "id").String()
+			if err1 != nil {
+				return c.Status(fiber.StatusBadRequest).SendString("Missing commit hash")
+			}
+			branch, err2 := payload.Get("ref").String()
+			if err2 != nil {
+				return c.Status(fiber.StatusBadRequest).SendString("Missing branch")
+			}
+			author, err3 := payload.Get("head_commit", "author", "name").String()
+			if err3 != nil {
+				return c.Status(fiber.StatusBadRequest).SendString("Missing author")
+			}
+			fmt.Println("commit_hash", commit_hash)
+			fmt.Println("branch", branch)
+			fmt.Println("author", author)
 			// Compute the expected signature
 			h := hmac.New(sha256.New, []byte(cfg.WebhookSecret))
 			h.Write(bodyBytes)
