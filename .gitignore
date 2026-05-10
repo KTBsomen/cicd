@@ -1,3 +1,5 @@
 *.exe
 *.bin
 .env
+gosrc/main
+gosrc/gosrc
