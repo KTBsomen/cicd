@@ -63,7 +63,7 @@ func RegisterToMongo(cfg *parser.Config) error {
 	logger.Info("☁️  Centralized config synced to MongoDB", cfg)
 	return nil
 }
-func updateCommitHash(cfg *parser.Config, commitHash string) error {
+func UpdateCommitHash(cfg *parser.Config, commitHash string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoDBURI))

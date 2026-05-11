@@ -27,6 +27,8 @@ type Project struct {
 	LastCommitHash string
 	LastCommitMsg  string
 	History        any
+	GithubToken    string
+	GithubUsername string
 	CreatedAt      time.Time
 }
 
@@ -68,6 +70,8 @@ func InitDB(cfg *parser.Config) error {
 		serviceDir TEXT,
 		lastCommitHash TEXT,
 		lastCommitMsg TEXT,
+		githubToken TEXT,
+		githubUsername TEXT,
 		history TEXT DEFAULT '[]',
 
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -100,13 +104,15 @@ func RegisterProject(cfg *parser.Config) error {
 	query := `
 	INSERT INTO users (
 		serviceName, serviceUser, repoURL, publicIp, 
-		webhook, adminEmail, serviceDir
-	) VALUES (?, ?, ?, ?, ?, ?, ?)
+		webhook, adminEmail, serviceDir, githubToken,githubUsername
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(repoURL, branch, serviceName) DO UPDATE SET
 		serviceUser=excluded.serviceUser,
 		publicIp=excluded.publicIp,
 		adminEmail=excluded.adminEmail,
-		serviceDir=excluded.serviceDir;`
+		serviceDir=excluded.serviceDir,
+		githubToken=excluded.githubToken,
+		githubUsername=excluded.githubUsername;`
 
 	_, err := DB.Exec(query,
 		cfg.ServiceName,
@@ -116,6 +122,8 @@ func RegisterProject(cfg *parser.Config) error {
 		strconv.Itoa(cfg.Webhook),
 		cfg.AdminEmail,
 		cfg.ServiceDir,
+		cfg.GitPassword,
+		cfg.GitUsername,
 	)
 
 	if err != nil {
@@ -185,5 +193,7 @@ func (p *Project) ToConfig() *parser.Config {
 		Branch:      p.Branch,
 		AdminEmail:  p.AdminEmail,
 		ServiceDir:  p.ServiceDir,
+		GitPassword: p.GithubToken,
+		GitUsername: p.GithubUsername,
 	}
 }

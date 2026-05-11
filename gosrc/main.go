@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/jedib0t/go-pretty/v6/table"
@@ -75,7 +76,7 @@ func main() {
 	config.Parse()
 	database.InitDB(&config)
 
-	if !isRunningUnderSystemd() {
+	if !isRunningUnderSystemd(&config) {
 		newPath, err := InstallBinaryToSystem(&config)
 		if err != nil {
 			newPath, err = os.Executable()
@@ -174,8 +175,8 @@ func InstallBinaryToSystem(cfg *parser.Config) (string, error) {
 }
 
 // isRunningUnderSystemd returns true if the process was started by systemd.
-func isRunningUnderSystemd() bool {
-	if runtime.GOOS == "windows" {
+func isRunningUnderSystemd(cfg *parser.Config) bool {
+	if strings.EqualFold(cfg.Setup, "run") {
 		return true
 	}
 	// systemd always sets INVOCATION_ID for services

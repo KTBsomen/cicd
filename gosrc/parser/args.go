@@ -7,9 +7,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/jedib0t/go-pretty/v6/text"
 )
 
 type Config struct {
@@ -65,89 +69,192 @@ func GetPublicIP() string {
 		if ip, err := io.ReadAll(resp.Body); err == nil {
 			return strings.TrimSpace(string(ip))
 		}
-	} else {
-		fmt.Printf("Error fetching IP from ipify: %v\n", err)
 	}
 
 	// 2. Fallback to Socket
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err == nil {
 		defer conn.Close()
-		// Extracts the IP from the local address of the connection
 		localAddr := conn.LocalAddr().(*net.UDPAddr)
 		return localAddr.IP.String()
 	}
 
-	fmt.Printf("Error fetching IP using socket: %v\n", err)
 	return ""
 }
 
-// Parse flags reciver method for Config struct
+// Parse flags receiver method for Config struct
 func (c *Config) Parse() {
-	// Required Flags
-	flag.StringVar(&c.Setup, "setup", "", "Type of setup (e.g., node, python, manual) [Required]")
-	flag.StringVar(&c.RepoURL, "repo-url", "", "Repository URL for the code [Required]")
-	flag.StringVar(&c.Branch, "branch", "main", "Branch for the code [Required]")
-	flag.StringVar(&c.AdminEmail, "admin-email", "", "Admin email to send error logs [Required]")
+	// 1. Setup Categorized "Mini Manual" Documentation
+	flag.Usage = func() {
+		fmt.Println(text.FgHiCyan.Sprint("\n🛰️  CICD ORCHESTRATOR MANAGER"))
+		fmt.Println(text.Faint.Sprint("High-performance Go-based automated deployment engine\n"))
 
-	// MongoDB with default
+		fmt.Println(text.Bold.Sprint("USAGE:"))
+		fmt.Printf("  %s %s\n\n", text.FgHiYellow.Sprint("cicd"), text.Faint.Sprint("--repo-url [url] [options...]"))
+
+		// --- SECTION 1: MANDATORY REQUIREMENTS ---
+		fmt.Println(text.BgRed.Sprint(text.FgWhite.Sprint(" ⚠️  MANDATORY REQUIREMENTS ")))
+		tReq := table.NewWriter()
+		tReq.AppendHeader(table.Row{"Flag", "Description", "Example"})
+		tReq.AppendRows([]table.Row{
+			{"--mongodb-uri", "Central sync URL (Must be same on all nodes)", "mongodb+srv://..."},
+			{"--repo-url", "Git Repository URL", "https://github.com/user/app"},
+			{"--admin-email", "System alert recipient", "admin@domain.com"},
+			{"--webhook", "Port for GitHub webhook listener", "8002"},
+
+			{"--webhook-secret", "HMAC secret for security", "my_secret_key"},
+		})
+		renderTable(tReq, text.FgHiRed)
+
+		// --- SECTION 2: SOURCE CONTROL ---
+		printCategory("📦 SOURCE CONTROL", []table.Row{
+			{"--branch", "Branch to monitor (Default: main)", "production"},
+			{"--git-username", "Username for private git access", "myuser"},
+			{"--git-password", "Token/Pass for private git access", "ghp_123..."},
+		}, text.FgHiCyan)
+
+		// --- SECTION 3: SYSTEM & PRIVILEGES ---
+		printCategory("⚙️  SYSTEM & SERVICE", []table.Row{
+			{"--setup", "Set to 'run' for debug or 'service' for systemd", "run"},
+			{"--service-name", "Unique ID for the service file", "api-server"},
+			{"--service-user", "User that will own the code files", "www-data"},
+			{"--service-dir", "Base path for deployment (Default: /home/)", "/var/www/"},
+			{"--user", "Operating system user for execution", "ubuntu"},
+			{"--sudo-pass", "Sudo password for package management", "********"},
+			{"--service-reset", "True/False: Wipe systemd and restart", "False"},
+		}, text.FgHiMagenta)
+
+		// --- SECTION 4: WEBHOOK & ALERTS ---
+		printCategory("🔔 WEBHOOK & ALERTS", []table.Row{
+			{"--smtp-host", "SMTP server for sending alerts", "smtp.gmail.com"},
+			{"--smtp-port", "Port for SMTP server", "587"},
+			{"--smtp-user", "Username for SMTP authentication", "alerts@domain.com"},
+			{"--smtp-pass", "Password for SMTP authentication", "********"},
+			{"--public-ip", "Manual Public IP (Auto-detected if empty)", "1.2.3.4"},
+		}, text.FgHiYellow)
+
+		// --- SECTION 5: EXAMPLES ---
+		fmt.Println(text.Bold.Sprint("💡 EXAMPLES & USE CASES"))
+		tEx := table.NewWriter()
+		tEx.AppendRows([]table.Row{
+			{text.FgGreen.Sprint("Local Debug"), "cicd --setup run --repo-url http://..."},
+			{text.FgGreen.Sprint("Production"), "cicd --setup service --repo-url https://... --webhook 8002"},
+		})
+		renderTable(tEx, text.FgHiGreen)
+	}
+
+	// 2. Define Flags
+	flag.StringVar(&c.Setup, "setup", "", "debug mode testing use RUN so bypass systemd")
+	flag.StringVar(&c.RepoURL, "repo-url", "", "Repository URL for the code")
+	flag.StringVar(&c.Branch, "branch", "main", "Branch for the code")
+	flag.StringVar(&c.AdminEmail, "admin-email", "", "Admin email to send error logs")
 	flag.StringVar(&c.MongoDBURI, "mongodb-uri", "mongodb+srv://default-url", "MongoDB URI for change monitoring")
-
-	// Git
 	flag.StringVar(&c.GitUsername, "git-username", "", "Git username for private repos")
 	flag.StringVar(&c.GitPassword, "git-password", "", "Git password/token for private repos")
-
-	// SMTP with defaults
 	flag.StringVar(&c.SMTPHost, "smtp-host", "smtpout.secureserver.net", "SMTP host")
 	flag.IntVar(&c.SMTPPort, "smtp-port", 465, "SMTP port")
 	flag.StringVar(&c.SMTPUser, "smtp-user", "test@wowcircle.in", "SMTP username")
 	flag.StringVar(&c.SMTPPass, "smtp-pass", "Epassword", "SMTP password")
-
-	// System
 	flag.StringVar(&c.User, "user", "", "Username of the code runner")
 	flag.StringVar(&c.SudoPass, "sudo-pass", "", "Sudo password for package installation")
-
-	// Service with defaults
 	flag.StringVar(&c.ServiceName, "service-name", "myapp", "Name of the service")
 	flag.StringVar(&c.ServiceDir, "service-dir", "/home/", "Path of the service")
 	flag.StringVar(&c.ServiceUser, "service-user", "root", "Name of the service user")
 	flag.StringVar(&c.ServiceReset, "service-reset", "False", "True/False to delete systemd and restart")
-
-	// Webhook
 	flag.IntVar(&c.Webhook, "webhook", 8002, "Port number for webhook listener")
 	flag.StringVar(&c.WebhookSecret, "webhook-secret", "", "GitHub Webhook secret")
-
-	// Public IP (You would call your getPublicIP function here)
 	flag.StringVar(&c.PublicIP, "public-ip", "", "Public IP for management")
 
 	flag.Parse()
 
-	// Logic for Required Fields
-	if c.Setup == "" || c.RepoURL == "" || c.AdminEmail == "" || c.Webhook <= 0 || c.WebhookSecret == "" {
-		fmt.Println("Error: --setup, --repo-url, --admin-email, --webhook and --webhook-secret are required.")
-		flag.Usage()
-		os.Exit(1)
-	}
-	if !isValid(c.AdminEmail) {
-		fmt.Println("Error: --admin-email is not a valid email address.")
-		os.Exit(1)
-	}
-	if !isValid(c.SMTPUser) {
-		fmt.Println("Error: --smtp-user is not a valid email address.")
-		os.Exit(1)
-	}
+	// 3. Run Visual Validation
+	c.validateRequirements()
+
 	if c.PublicIP == "" {
 		c.PublicIP = GetPublicIP()
 	}
 }
 
-func (C *Config) String() string {
+// printCategory is a helper to render a small table for each section
+func printCategory(title string, rows []table.Row, color text.Color) {
+	fmt.Println(text.Bold.Sprint(title))
+	t := table.NewWriter()
+	t.AppendHeader(table.Row{"Flag", "Description", "Example"})
+
+	for _, row := range rows {
+		t.AppendRow(row)
+		t.AppendSeparator()
+	}
+
+	renderTable(t, color)
+}
+
+func renderTable(t table.Writer, color text.Color) {
+	t.SetAllowedRowLength(120)
+	style := table.StyleRounded
+	style.Color.Header = text.Colors{color, text.Bold}
+	style.Color.Border = text.Colors{text.FgHiBlack}
+	t.SetStyle(style)
+	fmt.Println(t.Render())
+	fmt.Println()
+}
+
+func (c *Config) validateRequirements() {
+	var missing []string
+	if c.MongoDBURI == "" || strings.Contains(c.MongoDBURI, "default-url") {
+		missing = append(missing, "--mongodb-uri")
+	}
+	if c.RepoURL == "" {
+		missing = append(missing, "--repo-url")
+	}
+	if c.AdminEmail == "" {
+		missing = append(missing, "--admin-email")
+	}
+	if c.WebhookSecret == "" {
+		missing = append(missing, "--webhook-secret")
+	}
+
+	if len(missing) > 0 {
+		fmt.Println(text.FgHiRed.Sprint("\n❌ CONFIGURATION ERROR"))
+		fmt.Println(text.Faint.Sprint("The following required flags were not found or are empty:"))
+
+		for _, m := range missing {
+			fmt.Printf("  %s %s\n", text.FgRed.Sprint("•"), text.Bold.Sprint(m))
+		}
+
+		fmt.Println(text.Bold.Sprint("\nACTION REQUIRED:"))
+		fmt.Printf("  Run the command with the missing flags or use %s for full documentation.\n\n", text.FgHiCyan.Sprint("--help"))
+		os.Exit(1)
+	}
+
+	// Email Validations
+	if !isValid(c.AdminEmail) {
+		fmt.Printf("\n%s --admin-email is not a valid email address.\n", text.FgRed.Sprint("Error:"))
+		os.Exit(1)
+	}
+}
+
+func (c *Config) String() string {
 	var argsBuilder strings.Builder
 	flag.VisitAll(func(f *flag.Flag) {
-		// f.Name is the flag name, f.Value is the value provided
 		fmt.Fprintf(&argsBuilder, "--%s=%v ", f.Name, f.Value)
 	})
+	return strings.TrimSpace(argsBuilder.String())
+}
 
-	finalString := strings.TrimSpace(argsBuilder.String())
-	return finalString
+// GetProjectPath calculates the final absolute path for the project files
+func (c *Config) GetProjectPath() string {
+	// Normalize to forward slashes for consistency across platforms
+	base := filepath.ToSlash(filepath.Clean(c.ServiceDir))
+
+	// SCENARIO 1: If the user specified "/home/", we use the ServiceUser's home
+	if base == "/home" || base == "home" {
+		if c.ServiceUser == "root" {
+			return "/root/" + c.ServiceName
+		}
+		return "/home/" + c.ServiceUser + "/" + c.ServiceName
+	}
+
+	// SCENARIO 2: If it's a custom path, we use it as the base
+	return filepath.ToSlash(filepath.Join(base, c.ServiceName))
 }
