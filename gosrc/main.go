@@ -3,10 +3,11 @@ package main
 import (
 	"fmt"
 	"gosrc/actions"
+	"gosrc/api"
 	"gosrc/database"
+	"gosrc/deploypath"
 	"gosrc/logger"
 	"gosrc/parser"
-	"gosrc/webhook"
 	"io"
 	"os"
 	"os/exec"
@@ -37,6 +38,14 @@ func GetResourceLimits(cpuPercent int, ramPercent int) (int, int64) {
 	return cpuQuota, ramLimit
 }
 func main() {
+	// Initialize the new multi-channel logger
+	logger.InitLogger()
+
+	// Ensure system dependencies (like git) are present
+	if err := actions.EnsureDependencies(); err != nil {
+		fmt.Printf("⚠️ Warning: Dependency check failed: %v\n", err)
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "list" {
 		database.InitDB(&parser.Config{})
 		projects, _ := database.GetAllProjects()
@@ -86,6 +95,30 @@ func main() {
 			}
 
 		}
+		// Resolve a secure, unique, and collision-free deployment path
+		existingPaths, _ := database.GetAllDeploymentPaths()
+		res, err := deploypath.ResolveDeploymentPath(deploypath.Config{
+			ServiceUser:         config.ServiceUser,
+			BaseDir:             config.ServiceDir,
+			ProjectName:         config.ServiceName,
+			ExistingDeployments: existingPaths,
+		})
+		if err != nil {
+			logger.Error("Secure Path Resolution Failed: "+err.Error(), &config)
+			fmt.Printf("❌ Secure Path Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Update the config with the final resolved path (e.g., /home/ubuntu/api-a81f2c)
+		config.ServiceDir = res.FinalPath
+
+		// Natively create the directory and set permissions (Root Operation)
+		if err := actions.SetupProjectFolder(&config); err != nil {
+			logger.Error("Failed to prepare project folder: "+err.Error(), &config)
+			fmt.Printf("❌ Permission Error: %v\n", err)
+			os.Exit(1)
+		}
+
 		database.RegisterProject(&config)
 		database.RegisterToMongo(&config)
 		fmt.Println("🛠️  Running in Setup Mode...")
@@ -119,10 +152,25 @@ func main() {
 		fmt.Println(p)
 	}
 
-	go webhook.StartWebhook(&config)
+	// Start the Unified Gateway (Webhooks + Dashboard + API) on a single port
+	go api.StartUnifiedServer(&config)
+
 	go database.WatchChanges(&config, func(projectName string) {
-		fmt.Println("Remote change detected for project:", projectName)
-		actions.GitPull(&config)
+		logger.Info(fmt.Sprintf("🔔 REMOTE TRIGGER: Deployment signal received for %s", projectName), &config)
+
+		// 1. Sync the Repository (Clone or Pull as ServiceUser)
+		if err := actions.SyncRepo(&config); err != nil {
+			logger.Error("Sync Failed: "+err.Error(), &config)
+			return
+		}
+
+		// 2. Execute Deployment Scripts (install.sh)
+		if err := actions.RunDeployment(&config); err != nil {
+			logger.Error("Execution Failed: "+err.Error(), &config)
+			return
+		}
+
+		logger.Info("✅ DEPLOYMENT CYCLE COMPLETE for "+projectName, &config)
 	})
 
 	fmt.Println(config.AdminEmail)

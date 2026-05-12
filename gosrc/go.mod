@@ -37,6 +37,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.13
 	github.com/gofiber/schema v1.7.1 // indirect
 	github.com/gofiber/utils/v2 v2.0.4 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.7.10
 	github.com/klauspost/compress v1.18.5 // indirect

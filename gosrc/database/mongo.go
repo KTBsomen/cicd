@@ -110,7 +110,8 @@ func WatchChanges(cfg *parser.Config, callback func(string)) {
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: bson.M{"fullDocument.repo_url": cfg.RepoURL}}},
 	}
-	stream, err := collection.Watch(ctx, pipeline)
+	opts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
+	stream, err := collection.Watch(ctx, pipeline, opts)
 	if err != nil {
 		logger.Error("Failed to start MongoDB Watch Stream", cfg)
 		return
@@ -129,4 +130,30 @@ func WatchChanges(cfg *parser.Config, callback func(string)) {
 			callback(projectName) // This will trigger our internal "TriggerUpdate"
 		}
 	}
+}
+
+// GetUniqueServerIPs retrieves all unique public_ips from the centralized registry
+func GetUniqueServerIPs(cfg *parser.Config) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoDBURI))
+	if err != nil {
+		logger.Error("Failed to connect to MongoDB", cfg)
+		return nil, err
+	}
+	defer client.Disconnect(ctx)
+
+	collection := client.Database("cicd").Collection("projects")
+	values, err := collection.Distinct(context.Background(), "public_ips", bson.M{})
+	if err != nil {
+		return nil, err
+	}
+
+	var ips []string
+	for _, v := range values {
+		if ip, ok := v.(string); ok {
+			ips = append(ips, ip)
+		}
+	}
+	return ips, nil
 }

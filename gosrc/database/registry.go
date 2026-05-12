@@ -103,9 +103,9 @@ func InitDB(cfg *parser.Config) error {
 func RegisterProject(cfg *parser.Config) error {
 	query := `
 	INSERT INTO users (
-		serviceName, serviceUser, repoURL, publicIp, 
-		webhook, adminEmail, serviceDir, githubToken,githubUsername
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		serviceName, serviceUser, repoURL, branch, publicIp, 
+		webhook, adminEmail, serviceDir, githubToken, githubUsername
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(repoURL, branch, serviceName) DO UPDATE SET
 		serviceUser=excluded.serviceUser,
 		publicIp=excluded.publicIp,
@@ -118,6 +118,7 @@ func RegisterProject(cfg *parser.Config) error {
 		cfg.ServiceName,
 		cfg.ServiceUser,
 		cfg.RepoURL,
+		cfg.Branch,
 		cfg.PublicIP,
 		strconv.Itoa(cfg.Webhook),
 		cfg.AdminEmail,
@@ -153,6 +154,14 @@ func GetAllProjects() ([]Project, error) {
 		projects = append(projects, p)
 	}
 	return projects, nil
+}
+func GetProjectByID(id string) (*Project, error) {
+	var p Project
+	err := DB.QueryRow("SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir FROM users WHERE id = ?", id).Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 func (p *Project) ToConfig() *parser.Config {
 	wh, _ := strconv.Atoi(p.Webhook)
@@ -196,4 +205,23 @@ func (p *Project) ToConfig() *parser.Config {
 		GitPassword: p.GithubToken,
 		GitUsername: p.GithubUsername,
 	}
+}
+
+// GetAllDeploymentPaths retrieves all currently used project directories
+func GetAllDeploymentPaths() ([]string, error) {
+
+	rows, err := DB.Query("SELECT service_dir FROM projects")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err == nil {
+			paths = append(paths, p)
+		}
+	}
+	return paths, nil
 }

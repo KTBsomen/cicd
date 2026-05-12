@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛰️ CICD Control Plane</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .terminal {
+            font-family: 'JetBrains Mono', monospace;
+            background: #000;
+            border: 1px solid #334155;
+        }
+
+        .glow {
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body x-data="dashboard()" x-cloak>
+
+    <!-- LOGIN SCREEN -->
+    <template x-if="!isAuthenticated">
+        <div class="fixed inset-0 flex items-center justify-center bg-slate-950 z-50">
+            <div class="glass p-10 rounded-2xl w-full max-w-md glow">
+                <h1 class="text-3xl font-semibold mb-2 text-sky-400">Welcome Back</h1>
+                <p class="text-slate-400 mb-8">Enter your admin email for a magic link</p>
+                <input x-model="loginEmail" type="email" placeholder="admin@domain.com"
+                    class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-sky-500 outline-none">
+                <button @click="sendMagicLink()"
+                    class="w-full bg-sky-600 hover:bg-sky-500 transition p-3 rounded-lg font-semibold">Send Magic
+                    Link</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- MAIN DASHBOARD -->
+    <div x-if="isAuthenticated" class="min-h-screen p-8 max-w-7xl mx-auto">
+        <header class="flex justify-between items-center mb-12">
+            <div>
+                <h1 class="text-4xl font-bold tracking-tight text-white">Fleet <span class="text-sky-400">Control</span>
+                </h1>
+                <p class="text-slate-400">Managing <span x-text="fleet.length"></span> active nodes</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="glass px-4 py-2 rounded-full text-sm flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                    Central Registry: Online
+                </div>
+                <button @click="logout()" class="text-slate-500 hover:text-white transition">Logout</button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+
+            <!-- SERVER LIST -->
+            <div class="lg:col-span-1 space-y-4">
+                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500 mb-4">Active Servers</h2>
+                <template x-for="ip in fleet">
+                    <div :class="selectedIP === ip ? 'border-sky-500 bg-sky-900/20' : 'hover:border-slate-600'"
+                        class="glass p-4 rounded-xl cursor-pointer transition-all border border-transparent group flex justify-between items-center">
+                        <div @click="selectServer(ip)" class="flex-1">
+                            <span class="font-medium text-slate-200" x-text="ip"></span>
+                        </div>
+                        <button @click.stop="viewSystemLogs(ip)" title="System Logs" class="p-2 hover:bg-slate-700 rounded-lg text-slate-500 hover:text-sky-400 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+                        </button>
+                    </div>
+                </template>
+            </div>
+
+            <!-- PROJECT DETAILS -->
+            <div class="lg:col-span-3 space-y-8">
+                <template x-if="selectedIP">
+                    <div>
+                        <div class="flex justify-between items-end mb-6">
+                            <h2 class="text-2xl font-semibold">Apps on <span class="text-sky-400"
+                                    x-text="selectedIP"></span></h2>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                            <template x-for="project in projects">
+                                <div @click="viewLogs(project)"
+                                    class="glass p-6 rounded-2xl hover:scale-[1.02] transition cursor-pointer relative overflow-hidden group">
+                                    <div class="absolute top-0 right-0 p-3">
+                                        <span
+                                            class="px-2 py-1 bg-green-500/20 text-green-400 text-[10px] font-bold rounded uppercase">Active</span>
+                                    </div>
+                                    <h3 class="text-xl font-bold mb-1" x-text="project.ServiceName"></h3>
+                                    <p class="text-slate-500 text-[11px] mb-4 truncate" x-text="project.RepoURL"></p>
+                                    
+                                    <div class="space-y-2">
+                                        <!-- Service User -->
+                                        <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                                            <svg class="w-3.5 h-3.5 text-sky-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                            <span class="font-bold uppercase tracking-wider text-slate-300" x-text="project.ServiceUser"></span>
+                                        </div>
+                                        <!-- Directory Path -->
+                                        <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                                            <svg class="w-3.5 h-3.5 text-sky-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                                            <span class="truncate italic" x-text="project.ServiceDir"></span>
+                                        </div>
+                                        <!-- Branch -->
+                                        <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                                            <svg class="w-3.5 h-3.5 text-sky-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                                            <span class="font-mono" x-text="project.Branch"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- LOG VIEWER -->
+                        <template x-if="selectedProject || systemLogsActive">
+                            <div class="space-y-4">
+                                <div class="flex justify-between items-center">
+                                    <h3 class="text-lg font-semibold">
+                                        <span x-text="selectedProject ? 'Live Logs: ' + selectedProject.ServiceName : 'System Logs: ' + selectedIP"></span>
+                                    </h3>
+                                    <button @click="selectedProject = null; systemLogsActive = false"
+                                        class="text-xs text-slate-500 hover:text-white underline">Close
+                                        Terminal</button>
+                                </div>
+                                <div class="terminal p-6 rounded-xl h-96 overflow-y-auto text-sm text-sky-400">
+                                    <pre x-text="activeLogs"></pre>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template x-if="!selectedIP">
+                    <div
+                        class="h-96 flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-3xl">
+                        <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10">
+                            </path>
+                        </svg>
+                        <p class="text-lg">Select a server to view its projects</p>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function dashboard() {
+            return {
+                isAuthenticated: localStorage.getItem('cicd_token') ? true : false,
+                loginEmail: '',
+                fleet: [],
+                selectedIP: null,
+                projects: [],
+                selectedProject: null,
+                systemLogsActive: false,
+                activeLogs: 'Loading live logs...',
+
+                async init() {
+                    if (this.isAuthenticated) {
+                        this.fetchFleet();
+                    }
+                },
+
+                async fetchFleet() {
+                    const res = await fetch('/api/fleet', { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
+                    this.fleet = await res.json();
+                },
+
+                async selectServer(ip) {
+                    this.selectedIP = ip;
+                    this.selectedProject = null;
+                    const res = await fetch(`http://${ip}:8002/api/projects`, {
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                    });
+                    this.projects = await res.json();
+                },
+
+                async viewLogs(project) {
+                    this.selectedProject = project;
+                    this.systemLogsActive = false;
+                    this.activeLogs = "Fetching project logs...";
+                    const res = await fetch(`http://${this.selectedIP}:8002/api/projects/${project.ID}/logs`, {
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                    });
+                    this.activeLogs = await res.text();
+                },
+
+                async viewSystemLogs(ip) {
+                    this.selectedIP = ip;
+                    this.selectedProject = null;
+                    this.systemLogsActive = true;
+                    this.activeLogs = "Fetching system logs...";
+                    const res = await fetch(`http://${ip}:8002/api/system/logs`, {
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                    });
+                    this.activeLogs = await res.text();
+                },
+
+                async sendMagicLink() {
+                    const res = await fetch('/auth/magic-link', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: this.loginEmail })
+                    });
+                    if (res.ok) alert('Magic link generated in system logs (Check terminal)');
+                },
+
+                logout() {
+                    localStorage.removeItem('cicd_token');
+                    location.reload();
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>
