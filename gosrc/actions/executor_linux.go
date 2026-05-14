@@ -17,3 +17,22 @@ func setPlatformAttributes(cmd *exec.Cmd, uid uint32, gid uint32) {
 		},
 	}
 }
+
+// prepareProcessGroup enables process group isolation for clean termination
+func prepareProcessGroup(cmd *exec.Cmd) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setpgid = true
+}
+
+// killProcessGroup terminates the entire process group
+func killProcessGroup(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	pgid, err := syscall.Getpgid(cmd.Process.Pid)
+	if err == nil {
+		syscall.Kill(-pgid, syscall.SIGKILL)
+	}
+}

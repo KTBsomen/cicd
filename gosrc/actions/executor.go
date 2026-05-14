@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 )
 
 // EnsureDependencies checks for essential system tools (like git) and installs them if missing.
@@ -97,9 +98,24 @@ func SetupProjectFolder(cfg *parser.Config) error {
 
 	// 4. THE REAL TEST: Verify the user can actually reach and write to this folder.
 	// We attempt to create the .cicdlog directory AS the target user via sudo.
-	cmd := exec.Command("sudo", "-u", cfg.ServiceUser, "mkdir", "-p", filepath.Join(path, ".cicdlog"))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("permission check failed: user '%s' cannot write to %s. Ensure parent directories have '+x' (execute) permission", cfg.ServiceUser, path)
+	testPath := filepath.Join(path, ".cicdlog")
+	testCmd := exec.Command("sudo", "-u", cfg.ServiceUser, "mkdir", "-p", testPath)
+
+	if err := testCmd.Run(); err != nil {
+		logger.Warn(fmt.Sprintf("⚠️  Visibility Issue: User '%s' cannot reach %s. Attempting auto-fix...", cfg.ServiceUser, path), cfg)
+
+		// Self-Healing: Attempt to grant execute (+x) permission to the parent directory
+		parentDir := filepath.Dir(path)
+		if err := exec.Command("chmod", "+x", parentDir).Run(); err == nil {
+			// Retry the test
+			if err := exec.Command("sudo", "-u", cfg.ServiceUser, "mkdir", "-p", testPath).Run(); err == nil {
+				logger.Info(fmt.Sprintf("🛠️  Auto-fixed traversal permissions for %s", parentDir), cfg)
+			} else {
+				return fmt.Errorf("permission check failed: user '%s' still cannot write to %s. Ensure parent directories have '+x' (execute) permission", cfg.ServiceUser, path)
+			}
+		} else {
+			return fmt.Errorf("failed to auto-fix permissions for %s: %v", parentDir, err)
+		}
 	}
 
 	// Success! We also ensure the newly created .cicdlog folder is owned by the user
@@ -164,7 +180,8 @@ func RunAsUser(cfg *parser.Config, command string, args ...string) error {
 	cmd := exec.Command(command, args...)
 	cmd.Dir = cfg.ServiceDir
 
-	// Capture output for debugging
+	// Set environment variables for the user
+	cmd.Env = append(os.Environ(), "HOME="+u.HomeDir, "USER="+u.Username)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -179,30 +196,54 @@ func RunAsUser(cfg *parser.Config, command string, args ...string) error {
 
 // SyncRepo ensures the project folder is up-to-date with the latest code
 func SyncRepo(cfg *parser.Config) error {
-	path := cfg.ServiceDir
+	codebasePath := filepath.Join(cfg.ServiceDir, "codebase")
+
+	// Ensure codebase directory exists
+	if _, err := os.Stat(codebasePath); os.IsNotExist(err) {
+		os.MkdirAll(codebasePath, 0755)
+		// Change ownership to the service user so git can work
+		u, _ := user.Lookup(cfg.ServiceUser)
+		uid, _ := strconv.Atoi(u.Uid)
+		gid, _ := strconv.Atoi(u.Gid)
+		os.Chown(codebasePath, uid, gid)
+	}
 
 	// 0. The "Safe Directory" Fix (Prevents Git Error 128)
-	// We tell Git that this directory is trusted even if the ownership looks 'dubious'
-	err := RunAsUser(cfg, "git", "config", "--global", "--add", "safe.directory", path)
+	err := RunAsUser(cfg, "git", "config", "--global", "--add", "safe.directory", codebasePath)
 	if err != nil {
-		logger.Warn(fmt.Sprintf("⚠️ Failed to set safe.directory (non-critical): %v", err), cfg)
+		logger.Warn(fmt.Sprintf("⚠️ Failed to set safe.directory: %v", err), cfg)
+	}
+
+	// Prepare authenticated URL if credentials exist
+	repoURL := cfg.RepoURL
+	if cfg.GitUsername != "" && cfg.GitPassword != "" {
+		// Replace https:// with https://user:pass@
+		if strings.HasPrefix(repoURL, "https://") {
+			repoURL = "https://" + cfg.GitUsername + ":" + cfg.GitPassword + "@" + strings.TrimPrefix(repoURL, "https://")
+		}
 	}
 
 	// Check if .git exists to decide between clone and pull
-	if _, err := os.Stat(filepath.Join(path, ".git")); os.IsNotExist(err) {
-		logger.Info(fmt.Sprintf("Cloning repository %s...", cfg.RepoURL), cfg)
-		// We use '.' to clone directly into the already-prepared and permissioned folder
-		return RunAsUser(cfg, "git", "clone", cfg.RepoURL, ".")
+	if _, err := os.Stat(filepath.Join(codebasePath, ".git")); os.IsNotExist(err) {
+		logger.Info(fmt.Sprintf("Cloning repository %s into codebase/...", repoURL), cfg)
+		return RunAsUser(cfg, "git", "clone", repoURL, codebasePath)
 	}
 
 	logger.Info("Pulling latest changes from git...", cfg)
+	// We need to tell RunAsUser to execute inside the codebase folder
+	oldDir := cfg.ServiceDir
+	cfg.ServiceDir = codebasePath
+	defer func() { cfg.ServiceDir = oldDir }()
+
 	return RunAsUser(cfg, "git", "pull", "origin", cfg.Branch)
 }
 
 // RunDeployment executes the install and run scripts within the project directory.
-// It captures all output to a local deploy.log file.
 func RunDeployment(cfg *parser.Config) error {
-	logPath := filepath.Join(cfg.ServiceDir, ".cicdlog", "deploy.log")
+	originalDir := cfg.ServiceDir
+	codebasePath := filepath.Join(originalDir, "codebase")
+
+	logPath := filepath.Join(originalDir, ".cicdlog", "deploy.log")
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return fmt.Errorf("failed to open project log: %v", err)
@@ -210,11 +251,12 @@ func RunDeployment(cfg *parser.Config) error {
 	defer logFile.Close()
 
 	// 1. Run Install Script (if exists and changed)
-	installScript := filepath.Join(cfg.ServiceDir, ".cicd", "install.sh")
+	// We check inside codebase/.cicd/install.sh only
+	installScript := filepath.Join(codebasePath, ".cicd", "install.sh")
+
 	if _, err := os.Stat(installScript); err == nil {
-		// Calculate hash to see if we need to run it
 		currentHash, _ := GetFileHash(installScript)
-		hashFile := filepath.Join(cfg.ServiceDir, ".cicdlog", "install.hash")
+		hashFile := filepath.Join(originalDir, ".cicdlog", "install.hash")
 		lastHash, _ := os.ReadFile(hashFile)
 
 		if string(lastHash) == currentHash {
@@ -232,23 +274,19 @@ func RunDeployment(cfg *parser.Config) error {
 			if cfg.SudoPass != "" {
 				// PATH 1: Password-based Sudo (AskPass Wrapper)
 				logger.Info("Using Password-based Sudo automation (AskPass)...", cfg)
-				askPassPath := filepath.Join(cfg.ServiceDir, ".cicdlog", "askpass.sh")
+				askPassPath := filepath.Join(originalDir, ".cicdlog", "askpass.sh")
 				helperContent := fmt.Sprintf("#!/bin/bash\necho '%s'\n", cfg.SudoPass)
 				os.WriteFile(askPassPath, []byte(helperContent), 0700)
 				defer os.Remove(askPassPath)
 
-				binPath := filepath.Join(cfg.ServiceDir, ".cicdlog", "bin")
-				os.MkdirAll(binPath, 0700)
-				sudoWrapper := filepath.Join(binPath, "sudo")
-				wrapperContent := "#!/bin/bash\nif [[ \"$*\" == *\"-A\"* ]]; then\n  exec /usr/bin/sudo \"$@\"\nelse\n  exec /usr/bin/sudo -A \"$@\"\nfi\n"
-				os.WriteFile(sudoWrapper, []byte(wrapperContent), 0755)
-				defer os.RemoveAll(binPath)
-
-				env = append(env, "SUDO_ASKPASS="+askPassPath, "DISPLAY=:0")
-				env = append(env, "PATH="+binPath+":"+os.Getenv("PATH"))
+				cfg.ServiceDir = codebasePath // Pivot to codebase for execution
+				os.Setenv("SUDO_ASKPASS", askPassPath)
+				err = RunAsUser(cfg, "sudo", "-A", "bash", installScript)
+				cfg.ServiceDir = originalDir // Return to root
 			} else {
-				// PATH 2: Just-In-Time Sudo Whitelist (NOPASSWD)
-				logger.Info("Using JIT Sudo Whitelist (NOPASSWD)...", cfg)
+				// PATH 2: Non-interactive/NOPASSWD Sudo
+				logger.Info("Using JIT Whitelist (NOPASSWD) for installation...", cfg)
+				logger.Info(fmt.Sprintf("script running as %s", cfg.ServiceUser), cfg)
 				if err := GrantSudoPrivileges(cfg.ServiceUser); err != nil {
 					logger.Error(fmt.Sprintf("⚠️ JIT Sudo failed: %v", err), cfg)
 				} else {
@@ -279,18 +317,51 @@ func RunDeployment(cfg *parser.Config) error {
 			os.WriteFile(hashFile, []byte(currentHash), 0644)
 			logger.Info("✅ install.sh executed and hash updated", cfg)
 		}
+	} else {
+		logger.Warn("⏩ install.sh not found. Skipping build step.", cfg)
+		return fmt.Errorf("install.sh not found")
 	}
 
-	logger.Info("✅ Deployment scripts executed successfully", cfg)
-
-	// 2. Restart the systemd service to apply new changes
-	logger.Info(fmt.Sprintf("🔄 Restarting systemd service: %s", cfg.ServiceName), cfg)
-	if err := exec.Command("systemctl", "restart", cfg.ServiceName).Run(); err != nil {
-		return fmt.Errorf("failed to restart service '%s': %v", cfg.ServiceName, err)
+	// 2. Start the application via the native Go Process Manager
+	logger.Info("⚙️  Launching app via internal Go Process Engine...", cfg)
+	if err := StartAppProcess(cfg); err != nil {
+		return fmt.Errorf("process start failed: %v", err)
 	}
 
-	logger.Info("🚀 Service is now LIVE with latest changes!", cfg)
+	logger.Info("🚀 Application is now LIVE and managed by Go!", cfg)
 	return nil
+}
+
+// RunCustomCommand executes a single command as the service user and returns the output
+func RunCustomCommand(cfg *parser.Config, command string) (string, error) {
+	if !isValidUsername(cfg.ServiceUser) {
+		return "", fmt.Errorf("invalid service user")
+	}
+
+	u, err := user.Lookup(cfg.ServiceUser)
+	if err != nil {
+		return "", err
+	}
+
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+
+	// We use bash -c to allow for complex commands/pipes if needed,
+	// but wrapped in RunAsUser for security.
+	cmd := exec.Command("bash", "-c", command)
+	cmd.Dir = cfg.ServiceDir
+
+	// Set identity
+	setPlatformAttributes(cmd, uint32(uid), uint32(gid))
+
+	// Set environment
+	cmd.Env = append(os.Environ(),
+		"HOME="+u.HomeDir,
+		"USER="+cfg.ServiceUser,
+	)
+
+	output, err := cmd.CombinedOutput()
+	return string(output), err
 }
 
 // isValidUsername ensures the username is safe for command line usage

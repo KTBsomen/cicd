@@ -6,12 +6,18 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"fmt"
+	"gosrc/actions"
 	"gosrc/database"
 	"gosrc/logger"
 	"gosrc/parser"
 	"os"
 	"path/filepath"
 	"time"
+
+	"bufio"
+	"encoding/json"
+	"io"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -134,7 +140,27 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err != nil {
 			return c.Status(500).SendString(err.Error())
 		}
-		return c.JSON(projects)
+
+		// Enrich projects with real-time process status
+		type projectStatus struct {
+			database.Project
+			IsRunning bool
+			PID       int
+			Uptime    string
+		}
+
+		var enriched []projectStatus
+		for _, p := range projects {
+			isRunning, pid, uptime := actions.GetProcessStatus(p.ServiceDir)
+			enriched = append(enriched, projectStatus{
+				Project:   p,
+				IsRunning: isRunning,
+				PID:       pid,
+				Uptime:    uptime,
+			})
+		}
+
+		return c.JSON(enriched)
 	})
 
 	api.Get("/projects/:id/logs", func(c fiber.Ctx) error {
@@ -158,6 +184,180 @@ func StartUnifiedServer(cfg *parser.Config) {
 		return c.SendString(string(data))
 	})
 
+	api.Post("/projects/:id/stop", func(c fiber.Ctx) error {
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil {
+			return c.Status(404).SendString("Not found")
+		}
+		actions.StopAppProcess(project.ServiceDir)
+		return c.SendString("Stopped")
+	})
+
+	api.Post("/projects/:id/deploy", func(c fiber.Ctx) error {
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil {
+			return c.Status(404).SendString("Not found")
+		}
+		appCfg := project.ToConfig()
+		go func() {
+			actions.SyncRepo(appCfg)
+			actions.RunDeployment(appCfg)
+		}()
+		return c.SendString("Deployment Started")
+	})
+
+	api.Post("/projects/:id/run", func(c fiber.Ctx) error {
+		type request struct {
+			Command string `json:"command"`
+		}
+		var req request
+		if err := c.Bind().Body(&req); err != nil {
+			return c.Status(400).SendString("Invalid request")
+		}
+
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil {
+			return c.Status(404).SendString("Not found")
+		}
+
+		output, err := actions.RunCustomCommand(project.ToConfig(), req.Command)
+		if err != nil {
+			return c.Status(500).SendString(fmt.Sprintf("Error: %v\nOutput: %s", err, output))
+		}
+		return c.SendString(output)
+	})
+	api.Delete("/projects/:id", func(c fiber.Ctx) error {
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil {
+			return c.Status(404).SendString("Not found")
+		}
+
+		// Stop process first
+		actions.StopAppProcess(project.ServiceDir)
+
+		// Delete from database
+		if err := database.DeleteProject(c.Params("id")); err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+
+		return c.SendString("Deleted")
+	})
+
+	// --- SSE REAL-TIME STREAMS ---
+
+	api.Get("/stream/fleet", func(c fiber.Ctx) error {
+		c.Set("Content-Type", "text/event-stream")
+		c.Set("Cache-Control", "no-cache")
+		c.Set("Connection", "keep-alive")
+
+		c.Response().SetBodyStreamWriter(func(w *bufio.Writer) {
+			for {
+				projects, _ := database.GetAllProjects()
+				type projectStatus struct {
+					database.Project
+					IsRunning bool
+					PID       int
+					Uptime    string
+				}
+				var enriched []projectStatus
+				for _, p := range projects {
+					isRunning, pid, uptime := actions.GetProcessStatus(p.ServiceDir)
+					enriched = append(enriched, projectStatus{
+						Project:   p,
+						IsRunning: isRunning,
+						PID:       pid,
+						Uptime:    uptime,
+					})
+				}
+				data, _ := json.Marshal(enriched)
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				if err := w.Flush(); err != nil {
+					return
+				}
+				time.Sleep(2 * time.Second)
+			}
+		})
+		return nil
+	})
+
+	api.Get("/projects/:id/logs/stream", func(c fiber.Ctx) error {
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil {
+			return c.Status(404).SendString("Not found")
+		}
+
+		c.Set("Content-Type", "text/event-stream")
+		c.Set("Cache-Control", "no-cache")
+		c.Set("Connection", "keep-alive")
+		c.Set("X-Accel-Buffering", "no") // Disable Nginx buffering
+
+		logPath := filepath.Join(project.ServiceDir, ".cicdlog", "deploy.log")
+
+		c.Response().SetBodyStreamWriter(func(w *bufio.Writer) {
+			// 1. Send an initial "Connected" message so the browser knows it's alive
+			fmt.Fprintf(w, ": heartbeat\n\n")
+			w.Flush()
+
+			file, err := os.Open(logPath)
+			if err != nil {
+				fmt.Fprintf(w, "data: ❌ Failed to open log file: %v\n\n", err)
+				w.Flush()
+				return
+			}
+			defer file.Close()
+
+			// 2. Read the LAST 20 lines for immediate context
+			// (Simplistic approach: seek back a bit and find lines)
+			stat, _ := file.Stat()
+			offset := int64(2048) // Look back 2KB
+			if stat.Size() < offset {
+				offset = 0
+			} else {
+				offset = stat.Size() - offset
+			}
+			file.Seek(offset, io.SeekStart)
+
+			// Skip first partial line
+			scanner := bufio.NewScanner(file)
+			if offset > 0 {
+				scanner.Scan()
+			}
+
+			for scanner.Scan() {
+				fmt.Fprintf(w, "data: %s\n\n", scanner.Text())
+			}
+			w.Flush()
+
+			// 3. Continue tailing for NEW lines
+			reader := bufio.NewReader(file)
+			lastHeartbeat := time.Now()
+
+			for {
+				line, err := reader.ReadString('\n')
+				if err != nil {
+					if err == io.EOF {
+						// Send heartbeat every 15s to keep connection alive
+						if time.Since(lastHeartbeat) > 15*time.Second {
+							fmt.Fprintf(w, ": heartbeat\n\n")
+							w.Flush()
+							lastHeartbeat = time.Now()
+						}
+						time.Sleep(500 * time.Millisecond)
+						continue
+					}
+					return
+				}
+
+				fmt.Fprintf(w, "data: %s\n\n", strings.TrimSpace(line))
+				if err := w.Flush(); err != nil {
+					return
+				}
+				lastHeartbeat = time.Now()
+			}
+		})
+		return nil
+	})
+
 	addr := fmt.Sprintf(":%d", cfg.Webhook)
 	logger.Info(fmt.Sprintf("🛰️  Unified Gateway starting on %s", addr), cfg)
 	if err := app.Listen(addr); err != nil {
@@ -171,6 +371,10 @@ func StartUnifiedServer(cfg *parser.Config) {
 
 func authMiddleware(c fiber.Ctx) error {
 	tokenString := c.Get("Authorization")
+	if tokenString == "" {
+		tokenString = c.Query("token")
+	}
+
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) { return jwtSecret, nil })
 	if err != nil || !token.Valid {
 		return c.Status(401).SendString("Invalid token")

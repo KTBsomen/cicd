@@ -163,6 +163,14 @@ func GetProjectByID(id string) (*Project, error) {
 	}
 	return &p, nil
 }
+func GetProjectByRepoURL(repoURL string) (*Project, error) {
+	var p Project
+	err := DB.QueryRow("SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir FROM users WHERE repoURL = ?", repoURL).Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
 func (p *Project) ToConfig() *parser.Config {
 	wh, _ := strconv.Atoi(p.Webhook)
 	errCount := 0
@@ -224,4 +232,8 @@ func GetAllDeploymentPaths() ([]string, error) {
 		}
 	}
 	return paths, nil
+}
+func DeleteProject(id string) error {
+	_, err := DB.Exec("DELETE FROM users WHERE id = ?", id)
+	return err
 }

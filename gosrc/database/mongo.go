@@ -98,7 +98,7 @@ func UpdateCommitHash(cfg *parser.Config, commitHash string) error {
 }
 
 // WatchChanges sits in a background loop and waits for Dashboard updates
-func WatchChanges(cfg *parser.Config, callback func(string)) {
+func WatchChanges(cfg *parser.Config, callback func(*parser.Config)) {
 	ctx := context.Background()
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoDBURI))
 	if err != nil {
@@ -125,9 +125,13 @@ func WatchChanges(cfg *parser.Config, callback func(string)) {
 			// Extract the project name and notify the orchestrator
 			fullDoc := event["fullDocument"].(bson.M)
 			projectName := fullDoc["service_name"].(string)
-
-			logger.Info("🔔 Remote change detected for: "+projectName, cfg)
-			callback(projectName) // This will trigger our internal "TriggerUpdate"
+			repoURL := fullDoc["repo_url"].(string)
+			project, err := GetProjectByRepoURL(repoURL)
+			if err != nil {
+				return
+			}
+			logger.Info("🔔 Remote change detected for: "+projectName, project.ToConfig())
+			callback(project.ToConfig()) // This will trigger our internal "TriggerUpdate"
 		}
 	}
 }

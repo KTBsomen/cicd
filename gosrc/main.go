@@ -81,6 +81,26 @@ func main() {
 		t.Render()
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "stop" {
+		err1 := exec.Command("systemctl", "stop", "cicd").Run()
+		err2 := exec.Command("systemctl", "disable", "cicd").Run()
+		if err1 != nil || err2 != nil {
+			fmt.Println("❌ Failed to stop service:", err1, err2)
+			os.Exit(1)
+		}
+		fmt.Println("✅ Service stopped and disabled")
+		os.Exit(0)
+	}
+	if len(os.Args) > 1 && os.Args[1] == "start" {
+		err1 := exec.Command("systemctl", "start", "cicd").Run()
+		if err1 != nil {
+			fmt.Println("❌ Failed to start service:", err1)
+			os.Exit(1)
+		}
+		fmt.Println("✅ Service started and enabled")
+		os.Exit(0)
+	}
+
 	var config parser.Config
 	config.Parse()
 	database.InitDB(&config)
@@ -144,33 +164,52 @@ func main() {
 
 		os.Exit(0)
 	}
+	// 1. start the server in background
+	go api.StartUnifiedServer(&config)
 	// 2. LOAD all projects (including ones from yesterday)
-	projects, _ := database.GetAllProjects()
-	// 3. START a manager for each one
+	projects, err := database.GetAllProjects()
+	if err != nil {
+		logger.Error("Failed to get all projects: "+err.Error(), &config)
+		os.Exit(1)
+	}
+	// --- FLEET RESURRECTION ---
+	// Automatically sync and start all registered projects on boot
+	logger.Info(fmt.Sprintf("🔋 Restoring fleet: %d projects found", len(projects)), &config)
 	for _, p := range projects {
-		// We'll build this worker next!
-		fmt.Println(p)
+		go func(proj database.Project) {
+			appCfg := proj.ToConfig()
+			logger.Info(fmt.Sprintf("🛠️  Auto-deploying %s...", appCfg.ServiceName), appCfg)
+
+			// 1. Sync the Repository
+			if err := actions.SyncRepo(appCfg); err != nil {
+				logger.Error("Auto-sync Failed: "+err.Error(), appCfg)
+				return
+			}
+
+			// 2. Execute Deployment (which includes starting the process)
+			if err := actions.RunDeployment(appCfg); err != nil {
+				logger.Error("Auto-deployment Failed: "+err.Error(), appCfg)
+				return
+			}
+		}(p)
 	}
 
-	// Start the Unified Gateway (Webhooks + Dashboard + API) on a single port
-	go api.StartUnifiedServer(&config)
-
-	go database.WatchChanges(&config, func(projectName string) {
-		logger.Info(fmt.Sprintf("🔔 REMOTE TRIGGER: Deployment signal received for %s", projectName), &config)
+	go database.WatchChanges(&config, func(project *parser.Config) {
+		logger.Info(fmt.Sprintf("🔔 REMOTE TRIGGER: Deployment signal received for %s", project.ServiceName), project)
 
 		// 1. Sync the Repository (Clone or Pull as ServiceUser)
-		if err := actions.SyncRepo(&config); err != nil {
-			logger.Error("Sync Failed: "+err.Error(), &config)
+		if err := actions.SyncRepo(project); err != nil {
+			logger.Error("Sync Failed: "+err.Error(), project)
 			return
 		}
 
 		// 2. Execute Deployment Scripts (install.sh)
-		if err := actions.RunDeployment(&config); err != nil {
-			logger.Error("Execution Failed: "+err.Error(), &config)
+		if err := actions.RunDeployment(project); err != nil {
+			logger.Error("Execution Failed: "+err.Error(), project)
 			return
 		}
 
-		logger.Info("✅ DEPLOYMENT CYCLE COMPLETE for "+projectName, &config)
+		logger.Info("✅ DEPLOYMENT CYCLE COMPLETE for "+project.ServiceName, project)
 	})
 
 	fmt.Println(config.AdminEmail)
