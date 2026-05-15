@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"gosrc/actions"
 	"gosrc/database"
+	"gosrc/deploypath"
 	"gosrc/logger"
 	"gosrc/parser"
 	"os"
@@ -51,7 +52,8 @@ func StartUnifiedServer(cfg *parser.Config) {
 
 	// 0. HEALTH CHECK & LANDING PAGE
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("🚀 CICD Unified Gateway is LIVE!\n\nAccess the Dashboard at: /dashboard")
+		c.Set("Content-Type", "text/html")
+		return c.Send([]byte("🚀 CICD Unified Gateway is LIVE!\n\nAccess the Dashboard at: <a href='/dashboard'>/dashboard</a>"))
 	})
 
 	// --- 1. WEBHOOK ROUTE (Public, but HMAC Secured) ---
@@ -161,6 +163,129 @@ func StartUnifiedServer(cfg *parser.Config) {
 		}
 
 		return c.JSON(enriched)
+	})
+
+	api.Post("/projects", func(c fiber.Ctx) error {
+		type CreateRequest struct {
+			RepoURL       string `json:"repo_url"`
+			Branch        string `json:"branch"`
+			ServiceName   string `json:"service_name"`
+			ServiceUser   string `json:"service_user"`
+			BaseDir       string `json:"base_dir"`
+			AdminEmail    string `json:"admin_email"`
+			GitUsername   string `json:"git_username"`
+			GitPassword   string `json:"git_password"`
+			WebhookSecret string `json:"webhook_secret"`
+			WebhookPort   int    `json:"webhook_port"`
+			MongoDBURI    string `json:"mongodb_uri"`
+			SMTPHost      string `json:"smtp_host"`
+			SMTPPort      int    `json:"smtp_port"`
+			SMTPUser      string `json:"smtp_user"`
+			SMTPPass      string `json:"smtp_pass"`
+			SudoPass      string `json:"sudo_pass"`
+			PublicIP      string `json:"public_ip"`
+		}
+
+		var req CreateRequest
+		if err := c.Bind().JSON(&req); err != nil {
+			return c.Status(400).SendString("Invalid request format")
+		}
+
+		// 1. Validation
+		if req.RepoURL == "" || req.ServiceName == "" || req.ServiceUser == "" {
+			return c.Status(400).SendString("Missing required fields: repo_url, service_name, service_user")
+		}
+
+		if req.Branch == "" {
+			req.Branch = "main"
+		}
+		if req.BaseDir == "" {
+			req.BaseDir = cfg.ServiceDir
+		}
+		if req.WebhookPort == 0 {
+			req.WebhookPort = 9641 // Default port for UI-created projects
+		}
+
+		logger.Info(fmt.Sprintf("🚀 UI TRIGGER: Creating project %s...", req.ServiceName), cfg)
+
+		// 2. Resolve Secure Path
+		existingPaths, _ := database.GetAllDeploymentPaths()
+		res, err := deploypath.ResolveDeploymentPath(deploypath.Config{
+			ServiceUser:         req.ServiceUser,
+			BaseDir:             req.BaseDir,
+			ProjectName:         req.ServiceName,
+			ExistingDeployments: existingPaths,
+		})
+		if err != nil {
+			return c.Status(500).SendString("Path Resolution Failed: " + err.Error())
+		}
+
+		// 3. Create a temporary config for this project
+		projectCfg := *cfg // Clone global config
+		projectCfg.RepoURL = req.RepoURL
+		projectCfg.Branch = req.Branch
+		projectCfg.ServiceName = req.ServiceName
+		projectCfg.ServiceUser = req.ServiceUser
+		projectCfg.ServiceDir = res.FinalPath
+
+		// Override with provided optional flags
+		if req.AdminEmail != "" {
+			projectCfg.AdminEmail = req.AdminEmail
+		}
+		if req.GitUsername != "" {
+			projectCfg.GitUsername = req.GitUsername
+		}
+		if req.GitPassword != "" {
+			projectCfg.GitPassword = req.GitPassword
+		}
+		if req.WebhookSecret != "" {
+			projectCfg.WebhookSecret = req.WebhookSecret
+		}
+		if req.WebhookPort != 0 {
+			projectCfg.Webhook = req.WebhookPort
+		}
+		if req.MongoDBURI != "" {
+			projectCfg.MongoDBURI = req.MongoDBURI
+		}
+		if req.PublicIP != "" {
+			projectCfg.PublicIP = req.PublicIP
+		}
+		if req.SMTPHost != "" {
+			projectCfg.SMTPHost = req.SMTPHost
+		}
+		if req.SMTPPort != 0 {
+			projectCfg.SMTPPort = req.SMTPPort
+		}
+		if req.SMTPUser != "" {
+			projectCfg.SMTPUser = req.SMTPUser
+		}
+		if req.SMTPPass != "" {
+			projectCfg.SMTPPass = req.SMTPPass
+		}
+		if req.SudoPass != "" {
+			projectCfg.SudoPass = req.SudoPass
+		}
+
+		// 4. Setup Folder (Root operation)
+		if err := actions.SetupProjectFolder(&projectCfg); err != nil {
+			return c.Status(500).SendString("Folder Setup Failed: " + err.Error())
+		}
+
+		// 5. Register in DBs
+		database.RegisterProject(&projectCfg)
+		database.RegisterToMongo(&projectCfg)
+
+		// 6. Trigger Initial Deployment in background
+		go func() {
+			logger.Info(fmt.Sprintf("🎬 Initializing deployment for %s...", projectCfg.ServiceName), &projectCfg)
+			actions.SyncRepo(&projectCfg)
+			actions.RunDeployment(&projectCfg)
+		}()
+
+		return c.Status(201).JSON(fiber.Map{
+			"message":     "Project created and deployment started",
+			"service_dir": projectCfg.ServiceDir,
+		})
 	})
 
 	api.Get("/projects/:id/logs", func(c fiber.Ctx) error {
@@ -356,6 +481,82 @@ func StartUnifiedServer(cfg *parser.Config) {
 			}
 		})
 		return nil
+	})
+
+	// --- GLOBAL SETTINGS API ---
+
+	// GET current global settings
+	api.Get("/settings", func(c fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"mongodb_uri":    cfg.MongoDBURI,
+			"admin_email":    cfg.AdminEmail,
+			"webhook_secret": cfg.WebhookSecret,
+			"smtp_host":      cfg.SMTPHost,
+			"smtp_port":      cfg.SMTPPort,
+			"smtp_user":      cfg.SMTPUser,
+			"public_ip":      cfg.PublicIP,
+		})
+	})
+
+	// UPDATE global settings and restart
+	api.Put("/settings", func(c fiber.Ctx) error {
+		type SettingsRequest struct {
+			MongoDBURI    string `json:"mongodb_uri"`
+			AdminEmail    string `json:"admin_email"`
+			WebhookSecret string `json:"webhook_secret"`
+			SMTPHost      string `json:"smtp_host"`
+			SMTPPort      int    `json:"smtp_port"`
+			SMTPUser      string `json:"smtp_user"`
+			SMTPPass      string `json:"smtp_pass"`
+			PublicIP      string `json:"public_ip"`
+		}
+
+		var req SettingsRequest
+		if err := c.Bind().JSON(&req); err != nil {
+			return c.Status(400).SendString("Invalid format")
+		}
+
+		// Update the in-memory config
+		if req.MongoDBURI != "" {
+			cfg.MongoDBURI = req.MongoDBURI
+		}
+		if req.AdminEmail != "" {
+			cfg.AdminEmail = req.AdminEmail
+		}
+		if req.WebhookSecret != "" {
+			cfg.WebhookSecret = req.WebhookSecret
+		}
+		if req.SMTPHost != "" {
+			cfg.SMTPHost = req.SMTPHost
+		}
+		if req.SMTPPort != 0 {
+			cfg.SMTPPort = req.SMTPPort
+		}
+		if req.SMTPUser != "" {
+			cfg.SMTPUser = req.SMTPUser
+		}
+		if req.SMTPPass != "" {
+			cfg.SMTPPass = req.SMTPPass
+		}
+		if req.PublicIP != "" {
+			cfg.PublicIP = req.PublicIP
+		}
+
+		// Save to SQLite
+		database.SaveGlobalSettings(cfg)
+
+		logger.Info("⚙️  Global settings updated via UI. Restarting orchestrator to apply changes...", cfg)
+
+		// Trigger restart after a small delay
+		go func() {
+			time.Sleep(1 * time.Second)
+			logger.Info("🛑 Shutting down for systemd restart...", cfg)
+			os.Exit(0)
+		}()
+
+		return c.JSON(fiber.Map{
+			"message": "Settings saved. Orchestrator is restarting...",
+		})
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Webhook)

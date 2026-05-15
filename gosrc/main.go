@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gosrc/actions"
 	"gosrc/api"
+	"gosrc/cli"
 	"gosrc/database"
 	"gosrc/deploypath"
 	"gosrc/logger"
@@ -16,8 +17,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
@@ -46,66 +45,16 @@ func main() {
 		fmt.Printf("⚠️ Warning: Dependency check failed: %v\n", err)
 	}
 
-	if len(os.Args) > 1 && os.Args[1] == "list" {
-		database.InitDB(&parser.Config{})
-		projects, _ := database.GetAllProjects()
-		t := table.NewWriter()
-		t.SetOutputMirror(os.Stdout)
-
-		// 1. Add Header with Bold/Cyan styling
-		t.AppendHeader(table.Row{"ID", "SERVICE NAME", "REPO URL", "BRANCH", "SERVICE DIR", "SERVICE USER"})
-		// 2. Add Rows with "Zebra" stripes using colors
-		for i, p := range projects {
-			// Switch between Cyan and White for the text
-			rowColor := text.FgHiCyan
-			if i%2 == 0 {
-				rowColor = text.FgHiWhite
-			}
-			t.AppendRow(table.Row{
-				rowColor.Sprint(p.ID),
-				rowColor.Sprint(p.ServiceName),
-				rowColor.Sprint(p.RepoURL),
-				rowColor.Sprint(p.Branch),
-				rowColor.Sprint(p.ServiceDir),
-				rowColor.Sprint(p.ServiceUser),
-			})
-			t.AppendSeparator() // The magic "Continuous Line"
-		}
-		// 3. Customize the look (Colors & Borders)
-		style := table.StyleRounded
-		style.Format.Header = text.FormatUpper                       // Make headers UPPERCASE
-		style.Color.Header = text.Colors{text.FgHiYellow, text.Bold} // Yellow Bold Header
-		style.Color.Border = text.Colors{text.FgHiBlack}             // Subtle Dim Borders
-
-		t.SetStyle(style)
-		t.Render()
-		return
-	}
-	if len(os.Args) > 1 && os.Args[1] == "stop" {
-		err1 := exec.Command("systemctl", "stop", "cicd").Run()
-		err2 := exec.Command("systemctl", "disable", "cicd").Run()
-		if err1 != nil || err2 != nil {
-			fmt.Println("❌ Failed to stop service:", err1, err2)
-			os.Exit(1)
-		}
-		fmt.Println("✅ Service stopped and disabled")
-		os.Exit(0)
-	}
-	if len(os.Args) > 1 && os.Args[1] == "start" {
-		err1 := exec.Command("systemctl", "start", "cicd").Run()
-		if err1 != nil {
-			fmt.Println("❌ Failed to start service:", err1)
-			os.Exit(1)
-		}
-		fmt.Println("✅ Service started and enabled")
-		os.Exit(0)
-	}
+	// 1. Handle Utility Commands (log, start, stop, ls, etc.)
+	cli.HandleCommands(&parser.Config{})
 
 	var config parser.Config
 	config.Parse()
 	database.InitDB(&config)
+	database.LoadGlobalSettings(&config) // Restore from DB if flags are missing
 
 	if !isRunningUnderSystemd(&config) {
+		database.SaveGlobalSettings(&config) // Persist current flags for the background service
 		newPath, err := InstallBinaryToSystem(&config)
 		if err != nil {
 			newPath, err = os.Executable()
@@ -115,33 +64,35 @@ func main() {
 			}
 
 		}
-		// Resolve a secure, unique, and collision-free deployment path
-		existingPaths, _ := database.GetAllDeploymentPaths()
-		res, err := deploypath.ResolveDeploymentPath(deploypath.Config{
-			ServiceUser:         config.ServiceUser,
-			BaseDir:             config.ServiceDir,
-			ProjectName:         config.ServiceName,
-			ExistingDeployments: existingPaths,
-		})
-		if err != nil {
-			logger.Error("Secure Path Resolution Failed: "+err.Error(), &config)
-			fmt.Printf("❌ Secure Path Error: %v\n", err)
-			os.Exit(1)
+		if config.RepoURL != "" {
+			// Resolve a secure, unique, and collision-free deployment path
+			existingPaths, _ := database.GetAllDeploymentPaths()
+			res, err := deploypath.ResolveDeploymentPath(deploypath.Config{
+				ServiceUser:         config.ServiceUser,
+				BaseDir:             config.ServiceDir,
+				ProjectName:         config.ServiceName,
+				ExistingDeployments: existingPaths,
+			})
+			if err != nil {
+				logger.Error("Secure Path Resolution Failed: "+err.Error(), &config)
+				fmt.Printf("❌ Secure Path Error: %v\n", err)
+				os.Exit(1)
+			}
+
+			// Update the config with the final resolved path (e.g., /home/ubuntu/api-a81f2c)
+			config.ServiceDir = res.FinalPath
+
+			// Natively create the directory and set permissions (Root Operation)
+			if err := actions.SetupProjectFolder(&config); err != nil {
+				logger.Error("Failed to prepare project folder: "+err.Error(), &config)
+				fmt.Printf("❌ Permission Error: %v\n", err)
+				os.Exit(1)
+			}
+
+			database.RegisterProject(&config)
+			database.RegisterToMongo(&config)
+			fmt.Println("🛠️  Running in Setup Mode...")
 		}
-
-		// Update the config with the final resolved path (e.g., /home/ubuntu/api-a81f2c)
-		config.ServiceDir = res.FinalPath
-
-		// Natively create the directory and set permissions (Root Operation)
-		if err := actions.SetupProjectFolder(&config); err != nil {
-			logger.Error("Failed to prepare project folder: "+err.Error(), &config)
-			fmt.Printf("❌ Permission Error: %v\n", err)
-			os.Exit(1)
-		}
-
-		database.RegisterProject(&config)
-		database.RegisterToMongo(&config)
-		fmt.Println("🛠️  Running in Setup Mode...")
 		serviceError := actions.CreateServicefile(&config, newPath)
 		if serviceError != nil {
 			logger.Error("Cant write service files", &config)
@@ -164,6 +115,8 @@ func main() {
 
 		os.Exit(0)
 	}
+
+	//Running under systemd starts here
 	// 1. start the server in background
 	go api.StartUnifiedServer(&config)
 	// 2. LOAD all projects (including ones from yesterday)

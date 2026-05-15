@@ -95,12 +95,12 @@ func (c *Config) Parse() {
 		// --- SECTION 1: MANDATORY REQUIREMENTS ---
 		fmt.Println(text.BgRed.Sprint(text.FgWhite.Sprint(" ⚠️  MANDATORY REQUIREMENTS ")))
 		tReq := table.NewWriter()
-		tReq.AppendHeader(table.Row{"Flag", "Description", "Example"})
+		tReq.AppendHeader(table.Row{"Flag", "Description", "Default"})
 		tReq.AppendRows([]table.Row{
 			{"--mongodb-uri", "Central sync URL (Must be same on all nodes)", "mongodb+srv://..."},
 			{"--repo-url", "Git Repository URL", "https://github.com/user/app"},
 			{"--admin-email", "System alert recipient", "admin@domain.com"},
-			{"--webhook", "Port for GitHub webhook listener", "8002"},
+			{"--webhook", "Port for GitHub webhook listener", "9641"},
 
 			{"--webhook-secret", "HMAC secret for security", "my_secret_key"},
 		})
@@ -138,7 +138,7 @@ func (c *Config) Parse() {
 		tEx := table.NewWriter()
 		tEx.AppendRows([]table.Row{
 			{text.FgGreen.Sprint("Local Debug"), "cicd --setup run --repo-url http://..."},
-			{text.FgGreen.Sprint("Production"), "cicd --setup service --repo-url https://... --webhook 8002"},
+			{text.FgGreen.Sprint("Production"), "cicd --setup service --repo-url https://... --webhook 9641"},
 		})
 		renderTable(tEx, text.FgHiGreen)
 	}
@@ -148,20 +148,20 @@ func (c *Config) Parse() {
 	flag.StringVar(&c.RepoURL, "repo-url", "", "Repository URL for the code")
 	flag.StringVar(&c.Branch, "branch", "main", "Branch for the code")
 	flag.StringVar(&c.AdminEmail, "admin-email", "", "Admin email to send error logs")
-	flag.StringVar(&c.MongoDBURI, "mongodb-uri", "mongodb+srv://default-url", "MongoDB URI for change monitoring")
+	flag.StringVar(&c.MongoDBURI, "mongodb-uri", "mongodb+srv://somenemulator_db_user:8Tc34iEW5KD54yD6@cicd.vlqm19g.mongodb.net/?appName=cicd", "MongoDB URI for change monitoring")
 	flag.StringVar(&c.GitUsername, "git-username", "", "Git username for private repos")
 	flag.StringVar(&c.GitPassword, "git-password", "", "Git password/token for private repos")
-	flag.StringVar(&c.SMTPHost, "smtp-host", "smtpout.secureserver.net", "SMTP host")
-	flag.IntVar(&c.SMTPPort, "smtp-port", 465, "SMTP port")
-	flag.StringVar(&c.SMTPUser, "smtp-user", "test@wowcircle.in", "SMTP username")
-	flag.StringVar(&c.SMTPPass, "smtp-pass", "Epassword", "SMTP password")
+	flag.StringVar(&c.SMTPHost, "smtp-host", "smtp.gmail.com", "SMTP host")
+	flag.IntVar(&c.SMTPPort, "smtp-port", 587, "SMTP port")
+	flag.StringVar(&c.SMTPUser, "smtp-user", "test@gmail.com", "SMTP username")
+	flag.StringVar(&c.SMTPPass, "smtp-pass", "", "SMTP password")
 	flag.StringVar(&c.User, "user", "", "Username of the code runner")
 	flag.StringVar(&c.SudoPass, "sudo-pass", "", "Sudo password for package installation")
 	flag.StringVar(&c.ServiceName, "service-name", "myapp", "Name of the service")
 	flag.StringVar(&c.ServiceDir, "service-dir", "/home/", "Path of the service")
 	flag.StringVar(&c.ServiceUser, "service-user", "root", "Name of the service user")
 	flag.StringVar(&c.ServiceReset, "service-reset", "False", "True/False to delete systemd and restart")
-	flag.IntVar(&c.Webhook, "webhook", 8002, "Port number for webhook listener")
+	flag.IntVar(&c.Webhook, "webhook", 9641, "Port number for webhook listener")
 	flag.StringVar(&c.WebhookSecret, "webhook-secret", "", "GitHub Webhook secret")
 	flag.StringVar(&c.PublicIP, "public-ip", "", "Public IP for management")
 
@@ -200,12 +200,17 @@ func renderTable(t table.Writer, color text.Color) {
 }
 
 func (c *Config) validateRequirements() {
+	// If no RepoURL is provided, we assume the user wants to start in "Gateway Mode"
+	// (Dashboard & Webhook listener only). We skip validation in this case.
+	if c.RepoURL == "" {
+		fmt.Println(text.FgHiCyan.Sprint("🛰️  Starting in GATEWAY MODE (Passive Management)"))
+		fmt.Println(text.Faint.Sprint("No deployment flags provided. Use the Dashboard to create projects.\n"))
+		return
+	}
+
 	var missing []string
 	if c.MongoDBURI == "" || strings.Contains(c.MongoDBURI, "default-url") {
 		missing = append(missing, "--mongodb-uri")
-	}
-	if c.RepoURL == "" {
-		missing = append(missing, "--repo-url")
 	}
 	if c.AdminEmail == "" {
 		missing = append(missing, "--admin-email")

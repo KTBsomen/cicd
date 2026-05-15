@@ -1,6 +1,9 @@
-package parser
+package parser_test
 
-import "testing"
+import (
+	"gosrc/parser"
+	"testing"
+)
 
 func TestGetProjectPath(t *testing.T) {
 	tests := []struct {
@@ -42,7 +45,7 @@ func TestGetProjectPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Config{
+			c := &parser.Config{
 				ServiceUser: tt.user,
 				ServiceName: tt.serviceName,
 				ServiceDir:  tt.serviceDir,

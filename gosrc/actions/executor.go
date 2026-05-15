@@ -218,8 +218,8 @@ func SyncRepo(cfg *parser.Config) error {
 	repoURL := cfg.RepoURL
 	if cfg.GitUsername != "" && cfg.GitPassword != "" {
 		// Replace https:// with https://user:pass@
-		if strings.HasPrefix(repoURL, "https://") {
-			repoURL = "https://" + cfg.GitUsername + ":" + cfg.GitPassword + "@" + strings.TrimPrefix(repoURL, "https://")
+		if after, ok := strings.CutPrefix(repoURL, "https://"); ok {
+			repoURL = "https://" + cfg.GitUsername + ":" + cfg.GitPassword + "@" + after
 		}
 	}
 

@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"gosrc/logger"
 	"gosrc/parser"
+
 	"os"
 )
 
 func CreateServicefile(cfg *parser.Config, binaryPath string) error {
 	// 1. Define your extra variables
-	execPath := binaryPath + " " + cfg.String()
+	execPath := binaryPath //+ " " + cfg.String()
 
 	// 2. Wrap everything in a map
 	data := map[string]any{

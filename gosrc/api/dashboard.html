@@ -100,6 +100,24 @@
                         </button>
                     </div>
                 </template>
+
+                <!-- GLOBAL SETTINGS BUTTON -->
+                <button @click="fetchSettings(); showSettingsModal = true"
+                    class="w-full mt-8 p-4 glass rounded-xl border border-slate-800 hover:border-amber-500/50 transition-all group flex items-center gap-3">
+                    <div class="p-2 bg-amber-500/10 rounded-lg group-hover:bg-amber-500/20 transition-colors">
+                        <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                            </path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="text-left">
+                        <div class="text-sm font-bold text-slate-200">Global Settings</div>
+                        <div class="text-[10px] text-slate-500 uppercase tracking-tighter">Infrastructure Control</div>
+                    </div>
+                </button>
             </div>
 
             <!-- PROJECT DETAILS -->
@@ -107,10 +125,231 @@
                 <template x-if="selectedIP">
                     <div>
                         <div class="flex justify-between items-end mb-6">
-                            <h2 class="text-2xl font-semibold">Apps on <span class="text-sky-400"
-                                    x-text="selectedIP"></span></h2>
-                            <div class="flex gap-2">
-                                <span class="text-xs text-green-400 italic">● Live Sync Active</span>
+                            <div>
+                                <h2 class="text-2xl font-semibold">Apps on <span class="text-sky-400"
+                                        x-text="selectedIP"></span></h2>
+                                <span class="text-[10px] text-green-400 italic">● Live Sync Active</span>
+                            </div>
+                            <button @click="showCreateModal = true"
+                                class="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                        d="M12 4v16m8-8H4"></path>
+                                </svg>
+                                Add Project
+                            </button>
+                        </div>
+
+                        <div x-show="showCreateModal"
+                            class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
+                            x-transition x-cloak>
+                            <div class="glass p-8 rounded-3xl w-full max-w-2xl glow max-h-[90vh] overflow-y-auto"
+                                @click.away="showCreateModal = false">
+                                <div class="flex justify-between items-center mb-6">
+                                    <h3 class="text-2xl font-bold text-sky-400">Add New Project</h3>
+                                    <button @click="showCreateModal = false"
+                                        class="text-slate-500 hover:text-white transition">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                <div class="space-y-8">
+                                    <!-- SECTION 1: CORE CONFIG -->
+                                    <section>
+                                        <h4
+                                            class="text-[10px] font-black text-sky-500/50 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                            <span class="w-8 h-[1px] bg-sky-500/20"></span> Core Configuration
+                                        </h4>
+                                        <div class="space-y-4">
+                                            <div>
+                                                <label
+                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Repo
+                                                    URL <span class="text-rose-500">*</span></label>
+                                                <input x-model="newProject.repo_url" type="text"
+                                                    placeholder="https://github.com/user/repo"
+                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-sky-500 transition">
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label
+                                                        class="block text-xs font-bold text-slate-500 uppercase mb-1">Service
+                                                        Name <span class="text-rose-500">*</span></label>
+                                                    <input x-model="newProject.service_name" type="text"
+                                                        placeholder="my-app"
+                                                        class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-sky-500 transition">
+                                                </div>
+                                                <div>
+                                                    <label
+                                                        class="block text-xs font-bold text-slate-500 uppercase mb-1">Branch</label>
+                                                    <input x-model="newProject.branch" type="text" placeholder="main"
+                                                        class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-sky-500 transition">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <!-- SECTION 2: SYSTEM & ACCESS -->
+                                    <section>
+                                        <h4
+                                            class="text-[10px] font-black text-purple-500/50 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                            <span class="w-8 h-[1px] bg-purple-500/20"></span> System & Access
+                                        </h4>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label
+                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Service
+                                                    User</label>
+                                                <input x-model="newProject.service_user" type="text" placeholder="root"
+                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-purple-500 transition">
+                                            </div>
+                                            <div>
+                                                <label
+                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Base
+                                                    Directory</label>
+                                                <input x-model="newProject.base_dir" type="text" placeholder="/home/"
+                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-purple-500 transition">
+                                            </div>
+                                            <div class="col-span-2">
+                                                <label
+                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Sudo
+                                                    Password (for auto-install)</label>
+                                                <input x-model="newProject.sudo_pass" type="password"
+                                                    placeholder="••••••••"
+                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-purple-500 transition">
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <!-- SECTION 3: CONNECTIVITY & SECURITY -->
+                                    <section>
+                                        <h4
+                                            class="text-[10px] font-black text-amber-500/50 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                            <span class="w-8 h-[1px] bg-amber-500/20"></span> Connectivity & Security
+                                        </h4>
+                                        <div class="space-y-4">
+                                            <div>
+                                                <label
+                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">MongoDB
+                                                    Sync URI</label>
+                                                <input x-model="newProject.mongodb_uri" type="text"
+                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 transition">
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label
+                                                        class="block text-xs font-bold text-slate-500 uppercase mb-1">Webhook
+                                                        Port</label>
+                                                    <input x-model.number="newProject.webhook_port" type="number"
+                                                        class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 transition">
+                                                </div>
+                                                <div>
+                                                    <label
+                                                        class="block text-xs font-bold text-slate-500 uppercase mb-1">Webhook
+                                                        Secret</label>
+                                                    <input x-model="newProject.webhook_secret" type="password"
+                                                        placeholder="••••••••"
+                                                        class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 transition">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <!-- SECTION 4: NOTIFICATIONS (ALERTS) -->
+                                    <section>
+                                        <div class="flex justify-between items-center mb-4">
+                                            <h4
+                                                class="text-[10px] font-black text-rose-500/50 uppercase tracking-widest flex items-center gap-2">
+                                                <span class="w-8 h-[1px] bg-rose-500/20"></span> Alerts & Notifications
+                                            </h4>
+                                            <button @click="showAdvanced = !showAdvanced"
+                                                class="text-[10px] font-bold text-slate-500 hover:text-rose-400 transition uppercase tracking-tighter"
+                                                x-text="showAdvanced ? 'Hide SMTP' : 'Custom SMTP'"></button>
+                                        </div>
+                                        <div class="space-y-4">
+                                            <div>
+                                                <label
+                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Admin
+                                                    Email</label>
+                                                <input x-model="newProject.admin_email" type="email"
+                                                    placeholder="admin@domain.com"
+                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-rose-500 transition">
+                                            </div>
+                                            <div x-show="showAdvanced" x-transition
+                                                class="p-4 bg-slate-900/50 rounded-2xl border border-slate-800 space-y-4">
+                                                <div class="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label
+                                                            class="block text-[10px] font-bold text-slate-500 uppercase mb-1">SMTP
+                                                            Host</label>
+                                                        <input x-model="newProject.smtp_host" type="text"
+                                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs outline-none">
+                                                    </div>
+                                                    <div>
+                                                        <label
+                                                            class="block text-[10px] font-bold text-slate-500 uppercase mb-1">SMTP
+                                                            Port</label>
+                                                        <input x-model.number="newProject.smtp_port" type="number"
+                                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs outline-none">
+                                                    </div>
+                                                </div>
+                                                <div class="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label
+                                                            class="block text-[10px] font-bold text-slate-500 uppercase mb-1">SMTP
+                                                            User</label>
+                                                        <input x-model="newProject.smtp_user" type="text"
+                                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs outline-none">
+                                                    </div>
+                                                    <div>
+                                                        <label
+                                                            class="block text-[10px] font-bold text-slate-500 uppercase mb-1">SMTP
+                                                            Pass</label>
+                                                        <input x-model="newProject.smtp_pass" type="password"
+                                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs outline-none">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <!-- SECTION 5: SOURCE CONTROL AUTH -->
+                                    <section>
+                                        <h4
+                                            class="text-[10px] font-black text-emerald-500/50 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                            <span class="w-8 h-[1px] bg-emerald-500/20"></span> Source Control Auth
+                                        </h4>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Git
+                                                    Username</label>
+                                                <input x-model="newProject.git_username" type="text"
+                                                    placeholder="Optional"
+                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Git
+                                                    Password/Token</label>
+                                                <input x-model="newProject.git_password" type="password"
+                                                    placeholder="Optional"
+                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition">
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <div class="flex gap-4 pt-6">
+                                        <button @click="createProject()" :disabled="loading"
+                                            class="flex-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 p-4 rounded-xl font-bold transition flex justify-center items-center gap-2 shadow-lg shadow-sky-900/20">
+                                            <span x-show="!loading">🚀 Launch Deployment</span>
+                                            <span x-show="loading"
+                                                class="animate-spin border-2 border-white border-t-transparent rounded-full w-5 h-5"></span>
+                                        </button>
+                                        <button @click="showCreateModal = false"
+                                            class="px-8 py-4 border border-slate-700 hover:bg-slate-800 rounded-xl font-bold transition">Cancel</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -225,211 +464,427 @@
                     </div>
                 </template>
             </div>
+            </template>
         </div>
-    </div>
 
-    <script>
-        function dashboard() {
-            return {
-                isAuthenticated: localStorage.getItem('cicd_token') ? true : false,
-                loginEmail: '',
-                fleet: [],
-                selectedIP: null,
-                projects: [],
-                selectedProject: null,
-                systemLogsActive: false,
-                activeLogs: '',
-                fleetStream: null,
-                logStream: null,
+        <!-- GLOBAL SETTINGS MODAL -->
+        <div x-show="showSettingsModal"
+            class="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-50 flex items-center justify-center p-4"
+            x-transition x-cloak>
+            <div class="glass p-10 rounded-[2.5rem] w-full max-w-2xl glow-amber overflow-y-auto max-h-[90vh]"
+                @click.away="showSettingsModal = false">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h3 class="text-3xl font-black text-amber-500 tracking-tighter">Infrastructure Settings</h3>
+                        <p class="text-slate-500 text-sm mt-1">Changes here will restart the core orchestrator engine.
+                        </p>
+                    </div>
+                    <button @click="showSettingsModal = false" class="text-slate-500 hover:text-white transition">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
 
-                async init() {
-                    if (this.isAuthenticated) {
-                        this.checkExpiry();
-                        await this.fetchFleet();
-                        this.initFleetStream();
-                    }
-                },
+                <div class="space-y-10">
+                    <!-- CORE CONNECTIVITY -->
+                    <section class="space-y-4">
+                        <h4
+                            class="text-[10px] font-black text-amber-500/50 uppercase tracking-[0.2em] flex items-center gap-3">
+                            <span class="w-10 h-[1px] bg-amber-500/30"></span> Core Connectivity
+                        </h4>
+                        <div class="grid grid-cols-1 gap-6">
+                            <div class="relative group">
+                                <label
+                                    class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">Central
+                                    MongoDB URI</label>
+                                <input x-model="settings.mongodb_uri" type="text"
+                                    class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-mono">
+                            </div>
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">Public
+                                        Management IP</label>
+                                    <input x-model="settings.public_ip" type="text" placeholder="Auto-detected if empty"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-mono">
+                                </div>
+                                <div class="relative">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">Webhook
+                                        Secret</label>
+                                    <input x-model="settings.webhook_secret" type="password" placeholder="••••••••"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all">
+                                </div>
+                            </div>
+                        </div>
+                    </section>
 
-                checkExpiry() {
-                    const token = localStorage.getItem('cicd_token');
-                    if (!token) return;
-                    try {
-                        const payload = JSON.parse(atob(token.split('.')[1]));
-                        if (payload.exp * 1000 < Date.now()) {
-                            this.logout();
+                    <!-- GLOBAL NOTIFICATIONS -->
+                    <section class="space-y-4">
+                        <h4
+                            class="text-[10px] font-black text-rose-500/50 uppercase tracking-[0.2em] flex items-center gap-3">
+                            <span class="w-10 h-[1px] bg-rose-500/30"></span> Global Notifications (SMTP)
+                        </h4>
+                        <div class="space-y-6">
+                            <div class="relative">
+                                <label
+                                    class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">Master
+                                    Admin Email</label>
+                                <input x-model="settings.admin_email" type="email"
+                                    class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                            </div>
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">SMTP
+                                        Host</label>
+                                    <input x-model="settings.smtp_host" type="text"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                </div>
+                                <div class="relative">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">SMTP
+                                        Port</label>
+                                    <input x-model.number="settings.smtp_port" type="number"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">SMTP
+                                        User</label>
+                                    <input x-model="settings.smtp_user" type="text"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                </div>
+                                <div class="relative">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">SMTP
+                                        Password</label>
+                                    <input x-model="settings.smtp_pass" type="password" placeholder="••••••••"
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="flex gap-4 pt-4">
+                        <button @click="updateSettings()" :disabled="loading"
+                            class="flex-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 p-5 rounded-[1.5rem] font-black transition flex justify-center items-center gap-3 shadow-2xl shadow-amber-900/40">
+                            <span x-show="!loading">💾 Save & Restart Engine</span>
+                            <span x-show="loading"
+                                class="animate-spin border-2 border-white border-t-transparent rounded-full w-5 h-5"></span>
+                        </button>
+                        <button @click="showSettingsModal = false"
+                            class="px-10 py-5 border border-slate-800 hover:bg-slate-900 rounded-[1.5rem] font-bold transition">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function dashboard() {
+                return {
+                    isAuthenticated: localStorage.getItem('cicd_token') ? true : false,
+                    loginEmail: '',
+                    fleet: [],
+                    selectedIP: null,
+                    projects: [],
+                    selectedProject: null,
+                    systemLogsActive: false,
+                    activeLogs: '',
+                    fleetStream: null,
+                    logStream: null,
+                    showCreateModal: false,
+                    showSettingsModal: false,
+                    showAdvanced: false,
+                    loading: false,
+                    settings: {},
+                    newProject: {
+                        repo_url: '',
+                        service_name: '',
+                        branch: 'main',
+                        service_user: 'root',
+                        base_dir: '/home/',
+                        public_ip: '',
+                        admin_email: '',
+                        git_username: '',
+                        git_password: '',
+                        webhook_secret: '',
+                        webhook_port: 9641,
+                        mongodb_uri: 'mongodb+srv://...',
+                        smtp_host: 'smtpout.secureserver.net',
+                        smtp_port: 465,
+                        smtp_user: '',
+                        smtp_pass: '',
+                        sudo_pass: ''
+                    },
+
+                    async init() {
+                        if (this.isAuthenticated) {
+                            this.checkExpiry();
+                            await this.fetchFleet();
+                            this.initFleetStream();
                         }
-                    } catch (e) { this.logout(); }
-                },
+                    },
 
-                initFleetStream() {
-                    if (this.fleetStream) this.fleetStream.close();
+                    checkExpiry() {
+                        const token = localStorage.getItem('cicd_token');
+                        if (!token) return;
+                        try {
+                            const payload = JSON.parse(atob(token.split('.')[1]));
+                            if (payload.exp * 1000 < Date.now()) {
+                                this.logout();
+                            }
+                        } catch (e) { this.logout(); }
+                    },
 
-                    // We connect to the current gateway for fleet status
-                    // But we might need to handle per-node status if nodes are independent
-                    this.fleetStream = new EventSource(`/api/stream/fleet?token=${localStorage.getItem('cicd_token')}`);
-                    this.fleetStream.onmessage = (e) => {
-                        const updatedProjects = JSON.parse(e.data);
-                        if (this.selectedIP) {
-                            this.projects = updatedProjects.filter(p => p.PublicIp === this.selectedIP);
-                        }
-                    };
-                    this.fleetStream.onerror = () => {
-                        console.error("Fleet stream disconnected. Retrying...");
-                    };
-                },
+                    initFleetStream() {
+                        if (this.fleetStream) this.fleetStream.close();
 
-                async fetchFleet() {
-                    const res = await fetch('/api/fleet', { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
-                    this.fleet = await res.json();
-                },
+                        // We connect to the current gateway for fleet status
+                        // But we might need to handle per-node status if nodes are independent
+                        this.fleetStream = new EventSource(`/api/stream/fleet?token=${localStorage.getItem('cicd_token')}`);
+                        this.fleetStream.onmessage = (e) => {
+                            try {
+                                const updatedProjects = JSON.parse(e.data);
+                                if (this.selectedIP && updatedProjects && updatedProjects.length > 0) {
+                                    //NO NEED TO FILTER SHOW ALL PROJECTS FROM A SERVER
 
-                async selectServer(ip) {
-                    this.selectedIP = ip;
-                    this.closeLogs();
-                    // Initial load
-                    const res = await fetch(`http://${ip}:8002/api/projects`, {
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
-                    this.projects = await res.json();
-                },
+                                    // Clean up the IPs for comparison (trim whitespace)
+                                    // const targetIP = this.selectedIP.trim();
+                                    // const filtered = updatedProjects.filter(p => 
+                                    //     p.PublicIp && p.PublicIp.trim() === targetIP
+                                    // );
 
-                async viewLogs(project) {
-                    if (this.logStream) this.logStream.close();
+                                    // ONLY overwrite if we actually found projects for this IP
+                                    // This prevents the "disappearing" bug if the stream is partial
+                                    if (updatedProjects.length > 0) {
+                                        this.projects = updatedProjects;
+                                    }
+                                }
+                            } catch (err) {
+                                console.error("Failed to parse fleet update:", err);
+                            }
+                        };
+                        this.fleetStream.onerror = () => {
+                            console.error("Fleet stream disconnected. Retrying...");
+                        };
+                    },
 
-                    this.selectedProject = project;
-                    this.systemLogsActive = false;
-                    this.activeLogs = "--- Connecting to Log Stream ---\n";
+                    async fetchFleet() {
+                        const res = await fetch('/api/fleet', { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
+                        this.fleet = await res.json();
+                    },
 
-                    const url = `http://${this.selectedIP}:8002/api/projects/${project.ID}/logs/stream?token=${localStorage.getItem('cicd_token')}`;
-                    this.logStream = new EventSource(url);
+                    async selectServer(ip) {
+                        this.selectedIP = ip;
+                        this.closeLogs();
+                        // Initial load
+                        const res = await fetch(`http://${ip}:9641/api/projects`, {
+                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                        });
+                        this.projects = await res.json();
+                    },
 
-                    this.logStream.onmessage = (e) => {
-                        this.activeLogs += e.data + "\n";
+                    async viewLogs(project) {
+                        if (this.logStream) this.logStream.close();
+
+                        this.selectedProject = project;
+                        this.systemLogsActive = false;
+                        this.activeLogs = "--- Connecting to Log Stream ---\n";
+
+                        const url = `http://${this.selectedIP}:9641/api/projects/${project.ID}/logs/stream?token=${localStorage.getItem('cicd_token')}`;
+                        this.logStream = new EventSource(url);
+
+                        this.logStream.onmessage = (e) => {
+                            this.activeLogs += e.data + "\n";
+                            this.scrollToBottom();
+                        };
+
+                        this.logStream.onerror = () => {
+                            this.activeLogs += "⚠️ [STREAM ERROR] Connection lost. Reconnecting...\n";
+                        };
+                    },
+
+                    async viewSystemLogs(ip) {
+                        // System logs are currently static in the backend, but we can make them stream too
+                        // For now, let's keep it simple or implement /api/system/logs/stream
+                        this.selectedIP = ip;
+                        this.selectedProject = null;
+                        this.systemLogsActive = true;
+                        this.activeLogs = "Fetching static system snapshot...";
+                        const res = await fetch(`http://${ip}:9641/api/system/logs`, {
+                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                        });
+                        this.activeLogs = await res.text();
                         this.scrollToBottom();
-                    };
+                    },
 
-                    this.logStream.onerror = () => {
-                        this.activeLogs += "⚠️ [STREAM ERROR] Connection lost. Reconnecting...\n";
-                    };
-                },
+                    closeLogs() {
+                        if (this.logStream) {
+                            this.logStream.close();
+                            this.logStream = null;
+                        }
+                        this.selectedProject = null;
+                        this.systemLogsActive = false;
+                        this.activeLogs = '';
+                    },
 
-                async viewSystemLogs(ip) {
-                    // System logs are currently static in the backend, but we can make them stream too
-                    // For now, let's keep it simple or implement /api/system/logs/stream
-                    this.selectedIP = ip;
-                    this.selectedProject = null;
-                    this.systemLogsActive = true;
-                    this.activeLogs = "Fetching static system snapshot...";
-                    const res = await fetch(`http://${ip}:8002/api/system/logs`, {
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
-                    this.activeLogs = await res.text();
-                    this.scrollToBottom();
-                },
+                    async stopProject(project) {
+                        if (!confirm(`Are you sure you want to STOP ${project.ServiceName}?`)) return;
+                        await fetch(`http://${this.selectedIP}:9641/api/projects/${project.ID}/stop`, {
+                            method: 'POST',
+                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                        });
+                    },
 
-                closeLogs() {
-                    if (this.logStream) {
-                        this.logStream.close();
-                        this.logStream = null;
+                    async redeployProject(project) {
+                        if (!confirm(`Trigger full redeploy for ${project.ServiceName}?`)) return;
+                        await fetch(`http://${this.selectedIP}:9641/api/projects/${project.ID}/deploy`, {
+                            method: 'POST',
+                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                        });
+                    },
+
+                    async runCommand(project) {
+                        const cmd = prompt(`Enter bash command to run as ${project.ServiceUser}:`, "ls -la");
+                        if (!cmd) return;
+
+                        const res = await fetch(`http://${this.selectedIP}:9641/api/projects/${project.ID}/run`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': localStorage.getItem('cicd_token'),
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ command: cmd })
+                        });
+                        const output = await res.text();
+                        alert(`Output for "${cmd}":\n\n${output}`);
+                    },
+
+                    async deleteProject(project) {
+                        if (!confirm(`❌ CRITICAL: Are you sure you want to PERMANENTLY DELETE ${project.ServiceName}?\nThis will stop the process and remove it from the registry.`)) return;
+
+                        const res = await fetch(`http://${this.selectedIP}:9641/api/projects/${project.ID}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                        });
+
+                        if (res.ok) {
+                            this.selectServer(this.selectedIP, true);
+                            alert("Project deleted successfully.");
+                        } else {
+                            alert("Failed to delete project: " + await res.text());
+                        }
+                    },
+
+                    formatLogs(text) {
+                        if (!text) return '';
+                        // Prevent HTML injection but allow our color spans
+                        const escape = (s) => s.replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+                        return text.split('\n').map(line => {
+                            let formatted = escape(line);
+                            formatted = formatted
+                                .replace(/\[INFO\]/g, '<span class="text-green-400">[INFO]</span>')
+                                .replace(/\[ERROR\]/g, '<span class="text-red-400 font-bold">[ERROR]</span>')
+                                .replace(/\[WARN\]/g, '<span class="text-yellow-400">[WARN]</span>')
+                                .replace(/SUCCESS/g, '<span class="text-emerald-400 font-bold">SUCCESS</span>')
+                                .replace(/FAILED/g, '<span class="text-rose-500 font-bold">FAILED</span>')
+                                .replace(/✅/g, '<span class="text-green-400">✅</span>')
+                                .replace(/⚠️/g, '<span class="text-yellow-400">⚠️</span>')
+                                .replace(/❌/g, '<span class="text-red-400">❌</span>');
+                            return formatted;
+                        }).join('<br>');
+                    },
+
+                    scrollToBottom() {
+                        this.$nextTick(() => {
+                            const el = document.getElementById('log-terminal');
+                            if (el) el.scrollTop = el.scrollHeight;
+                        });
+                    },
+
+                    async sendMagicLink() {
+                        const res = await fetch('/auth/magic-link', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: this.loginEmail })
+                        });
+                        if (res.ok) alert('Magic link generated. Check system logs.');
+                    },
+
+                    async createProject() {
+                        this.loading = true;
+                        try {
+                            const res = await fetch('/api/projects', {
+                                method: 'POST',
+                                headers: {
+                                    'Authorization': localStorage.getItem('cicd_token'),
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(this.newProject)
+                            });
+
+                            if (res.ok) {
+                                this.showCreateModal = false;
+                                this.newProject = { repo_url: '', service_name: '', branch: 'main', service_user: 'root' };
+                                alert("Project created! Deployment started in background.");
+                                this.selectServer(this.selectedIP, true); // Refresh list
+                            } else {
+                                alert("Failed to create project: " + await res.text());
+                            }
+                        } catch (e) {
+                            alert("Error: " + e.message);
+                        } finally {
+                            this.loading = false;
+                        }
+                    },
+
+                    async fetchSettings() {
+                        const res = await fetch('/api/settings', {
+                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                        });
+                        this.settings = await res.json();
+                    },
+
+                    async updateSettings() {
+                        this.loading = true;
+                        try {
+                            const res = await fetch('/api/settings', {
+                                method: 'PUT',
+                                headers: {
+                                    'Authorization': localStorage.getItem('cicd_token'),
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(this.settings)
+                            });
+
+                            if (res.ok) {
+                                alert("Settings saved! Orchestrator is restarting. Please refresh in 5 seconds.");
+                                location.reload();
+                            } else {
+                                alert("Failed to save settings: " + await res.text());
+                            }
+                        } catch (e) {
+                            alert("Error: " + e.message);
+                        } finally {
+                            this.loading = false;
+                        }
+                    },
+
+                    logout() {
+                        if (this.fleetStream) this.fleetStream.close();
+                        if (this.logStream) this.logStream.close();
+                        localStorage.removeItem('cicd_token');
+                        location.reload();
                     }
-                    this.selectedProject = null;
-                    this.systemLogsActive = false;
-                    this.activeLogs = '';
-                },
-
-                async stopProject(project) {
-                    if (!confirm(`Are you sure you want to STOP ${project.ServiceName}?`)) return;
-                    await fetch(`http://${this.selectedIP}:8002/api/projects/${project.ID}/stop`, {
-                        method: 'POST',
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
-                },
-
-                async redeployProject(project) {
-                    if (!confirm(`Trigger full redeploy for ${project.ServiceName}?`)) return;
-                    await fetch(`http://${this.selectedIP}:8002/api/projects/${project.ID}/deploy`, {
-                        method: 'POST',
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
-                },
-
-                async runCommand(project) {
-                    const cmd = prompt(`Enter bash command to run as ${project.ServiceUser}:`, "ls -la");
-                    if (!cmd) return;
-
-                    const res = await fetch(`http://${this.selectedIP}:8002/api/projects/${project.ID}/run`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': localStorage.getItem('cicd_token'),
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ command: cmd })
-                    });
-                    const output = await res.text();
-                    alert(`Output for "${cmd}":\n\n${output}`);
-                },
-
-                async deleteProject(project) {
-                    if (!confirm(`❌ CRITICAL: Are you sure you want to PERMANENTLY DELETE ${project.ServiceName}?\nThis will stop the process and remove it from the registry.`)) return;
-                    
-                    const res = await fetch(`http://${this.selectedIP}:8002/api/projects/${project.ID}`, {
-                        method: 'DELETE',
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
-                    
-                    if (res.ok) {
-                        this.selectServer(this.selectedIP, true);
-                        alert("Project deleted successfully.");
-                    } else {
-                        alert("Failed to delete project: " + await res.text());
-                    }
-                },
-
-                formatLogs(text) {
-                    if (!text) return '';
-                    // Prevent HTML injection but allow our color spans
-                    const escape = (s) => s.replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-
-                    return text.split('\n').map(line => {
-                        let formatted = escape(line);
-                        formatted = formatted
-                            .replace(/\[INFO\]/g, '<span class="text-green-400">[INFO]</span>')
-                            .replace(/\[ERROR\]/g, '<span class="text-red-400 font-bold">[ERROR]</span>')
-                            .replace(/\[WARN\]/g, '<span class="text-yellow-400">[WARN]</span>')
-                            .replace(/SUCCESS/g, '<span class="text-emerald-400 font-bold">SUCCESS</span>')
-                            .replace(/FAILED/g, '<span class="text-rose-500 font-bold">FAILED</span>')
-                            .replace(/✅/g, '<span class="text-green-400">✅</span>')
-                            .replace(/⚠️/g, '<span class="text-yellow-400">⚠️</span>')
-                            .replace(/❌/g, '<span class="text-red-400">❌</span>');
-                        return formatted;
-                    }).join('<br>');
-                },
-
-                scrollToBottom() {
-                    this.$nextTick(() => {
-                        const el = document.getElementById('log-terminal');
-                        if (el) el.scrollTop = el.scrollHeight;
-                    });
-                },
-
-                async sendMagicLink() {
-                    const res = await fetch('/auth/magic-link', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email: this.loginEmail })
-                    });
-                    if (res.ok) alert('Magic link generated. Check system logs.');
-                },
-
-                logout() {
-                    if (this.fleetStream) this.fleetStream.close();
-                    if (this.logStream) this.logStream.close();
-                    localStorage.removeItem('cicd_token');
-                    location.reload();
                 }
             }
-        }
-    </script>
+        </script>
 </body>
 
 </html>

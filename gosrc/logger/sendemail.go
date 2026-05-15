@@ -35,7 +35,6 @@ func SendMail(cfg *parser.Config, subject string, message string) error {
 	return smtp.SendMail(addr, auth, cfg.SMTPUser, []string{cfg.AdminEmail}, body.Bytes())
 }
 
-//gmail pass : jpxq qalt kwvu ifal
 //gmail host: smtp.gmail.com
 //gmail port: 587
 //gmail user : "somen6562@gmail.com"

@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -73,19 +74,29 @@ func InitDB(cfg *parser.Config) error {
 		githubToken TEXT,
 		githubUsername TEXT,
 		history TEXT DEFAULT '[]',
-
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		UNIQUE(repoURL,branch,serviceName)
-    );`
+    );
+	CREATE TABLE IF NOT EXISTS settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		mongodb_uri TEXT,
+		admin_email TEXT,
+		webhook_secret TEXT,
+		smtp_host TEXT,
+		smtp_port INTEGER,
+		smtp_user TEXT,
+		smtp_pass TEXT,
+		public_ip TEXT,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
 
 	_, err = DB.Exec(query)
 	if err != nil {
-		return fmt.Errorf("failed to create table: %v", err)
+		return fmt.Errorf("failed to create tables: %v", err)
 	}
 
 	// 3. FIX PERMISSIONS (The Grounding Fix)
 	// Change ownership of the DB file from root -> App User
-	// This ensures the app (running as ServiceUser) can read/write to its own DB
 	u, err := user.Lookup(cfg.ServiceUser)
 	if err == nil {
 		uid, _ := strconv.Atoi(u.Uid)
@@ -94,8 +105,67 @@ func InitDB(cfg *parser.Config) error {
 	}
 
 	logger.Info("Database initialized", cfg)
-	fmt.Println(dbPath)
 	return nil
+}
+
+// SaveGlobalSettings stores the current configuration into the settings table
+func SaveGlobalSettings(cfg *parser.Config) {
+	query := `
+	INSERT INTO settings (id, mongodb_uri, admin_email, webhook_secret, smtp_host, smtp_port, smtp_user, smtp_pass, public_ip, updated_at)
+	VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	ON CONFLICT(id) DO UPDATE SET
+		mongodb_uri=excluded.mongodb_uri,
+		admin_email=excluded.admin_email,
+		webhook_secret=excluded.webhook_secret,
+		smtp_host=excluded.smtp_host,
+		smtp_port=excluded.smtp_port,
+		smtp_user=excluded.smtp_user,
+		smtp_pass=excluded.smtp_pass,
+		public_ip=excluded.public_ip,
+		updated_at=CURRENT_TIMESTAMP;`
+
+	_, err := DB.Exec(query, cfg.MongoDBURI, cfg.AdminEmail, cfg.WebhookSecret, cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.PublicIP)
+	if err != nil {
+		logger.Error("Failed to save global settings: "+err.Error(), cfg)
+	}
+}
+
+// LoadGlobalSettings restores the configuration from the settings table
+func LoadGlobalSettings(cfg *parser.Config) {
+	query := `SELECT mongodb_uri, admin_email, webhook_secret, smtp_host, smtp_port, smtp_user, smtp_pass, public_ip FROM settings WHERE id = 1`
+	row := DB.QueryRow(query)
+
+	var mongo, admin, secret, host, user, pass, ip string
+	var port int
+
+	err := row.Scan(&mongo, &admin, &secret, &host, &port, &user, &pass, &ip)
+	if err == nil {
+		// Only override if the current config is using defaults or empty
+		if cfg.MongoDBURI == "" || strings.Contains(cfg.MongoDBURI, "default-url") || strings.Contains(cfg.MongoDBURI, "cicd.vlqm19g") {
+			cfg.MongoDBURI = mongo
+		}
+		if cfg.AdminEmail == "" {
+			cfg.AdminEmail = admin
+		}
+		if cfg.WebhookSecret == "" {
+			cfg.WebhookSecret = secret
+		}
+		if cfg.SMTPHost == "" || cfg.SMTPHost == "smtpout.secureserver.net" || cfg.SMTPHost == "smtp.gmail.com" {
+			cfg.SMTPHost = host
+		}
+		if cfg.SMTPPort == 0 || cfg.SMTPPort == 465 || cfg.SMTPPort == 587 {
+			cfg.SMTPPort = port
+		}
+		if cfg.SMTPUser == "" {
+			cfg.SMTPUser = user
+		}
+		if cfg.SMTPPass == "" {
+			cfg.SMTPPass = pass
+		}
+		if cfg.PublicIP == "" {
+			cfg.PublicIP = ip
+		}
+	}
 }
 
 // RegisterProject saves the configuration from CLI/Dashboard into SQLite.
@@ -171,6 +241,15 @@ func GetProjectByRepoURL(repoURL string) (*Project, error) {
 	}
 	return &p, nil
 }
+
+func GetProjectByName(name string) (*Project, error) {
+	var p Project
+	err := DB.QueryRow("SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir FROM users WHERE serviceName = ?", name).Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
 func (p *Project) ToConfig() *parser.Config {
 	wh, _ := strconv.Atoi(p.Webhook)
 	errCount := 0
@@ -218,7 +297,7 @@ func (p *Project) ToConfig() *parser.Config {
 // GetAllDeploymentPaths retrieves all currently used project directories
 func GetAllDeploymentPaths() ([]string, error) {
 
-	rows, err := DB.Query("SELECT service_dir FROM projects")
+	rows, err := DB.Query("SELECT serviceDir FROM users")
 	if err != nil {
 		return nil, err
 	}
