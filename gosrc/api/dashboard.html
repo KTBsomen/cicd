@@ -1,890 +1,906 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🛰️ CICD Control Plane</title>
+    <title>🛰️ CICD Orchestrator | Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-color: #09090b;
+            --card-bg: rgba(24, 24, 27, 0.6);
+            --accent-cyan: #22d3ee;
+            --accent-purple: #a855f7;
+            --accent-amber: #fbbf24;
+            --accent-rose: #f43f5e;
+        }
+
         body {
-            font-family: 'Outfit', sans-serif;
-            background-color: #0f172a;
-            color: #f8fafc;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-color);
+            color: #f4f4f5;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(34, 211, 238, 0.05) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.05) 0px, transparent 50%);
+            background-attachment: fixed;
+            min-height: 100vh;
         }
 
         .glass {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .glass-card {
+            background: rgba(39, 39, 42, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-card:hover {
+            background: rgba(39, 39, 42, 0.6);
+            border-color: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
         }
 
         .terminal {
             font-family: 'JetBrains Mono', monospace;
             background: #000;
-            border: 1px solid #334155;
             scrollbar-width: thin;
-            scrollbar-color: #334155 #000;
+            scrollbar-color: #27272a #000;
         }
 
-        .glow {
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
-        }
+        .terminal::-webkit-scrollbar { width: 6px; }
+        .terminal::-webkit-scrollbar-track { background: #000; }
+        .terminal::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
 
-        [x-cloak] {
-            display: none !important;
-        }
+        .glow-cyan { filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.4)); }
+        .glow-rose { filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.4)); }
 
-        pre {
-            white-space: pre-wrap;
-            word-wrap: break-word;
+        [x-cloak] { display: none !important; }
+
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-slow { animation: pulse-slow 3s infinite; }
+
+        .progress-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            transition: width 0.5s ease-out;
         }
     </style>
 </head>
 
-<body x-data="dashboard()" x-cloak>
+<body x-data="dashboard()" @keydown.escape="closeModals()">
 
-    <!-- LOGIN SCREEN -->
+    <!-- AUTHENTICATION OVERLAY -->
     <template x-if="!isAuthenticated">
-        <div class="fixed inset-0 flex items-center justify-center bg-slate-950 z-50">
-            <div class="glass p-10 rounded-2xl w-full max-w-md glow">
-                <h1 class="text-3xl font-semibold mb-2 text-sky-400">Welcome Back</h1>
-                <p class="text-slate-400 mb-8">Enter your admin email for a magic link</p>
-                <input x-model="loginEmail" type="email" placeholder="admin@domain.com"
-                    class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-sky-500 outline-none">
-                <button @click="sendMagicLink()"
-                    class="w-full bg-sky-600 hover:bg-sky-500 transition p-3 rounded-lg font-semibold">Send Magic
-                    Link</button>
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/80 backdrop-blur-xl">
+            <div class="glass p-12 rounded-[2.5rem] w-full max-w-md border border-white/10 shadow-2xl relative overflow-hidden">
+                <!-- Background Decoration -->
+                <div class="absolute -top-24 -right-24 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl"></div>
+                <div class="absolute -bottom-24 -left-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl"></div>
+
+                <div class="relative z-10">
+                    <div class="flex flex-col items-center mb-10">
+                        <div class="w-16 h-16 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-cyan-500/20 mb-6">
+                            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                        </div>
+                        <h1 class="text-3xl font-black tracking-tighter text-white">ORCHESTRATOR <span class="text-zinc-500">V1</span></h1>
+                        <p class="text-zinc-500 text-sm mt-2 font-medium">Production Deployment Control</p>
+                    </div>
+
+                    <div class="space-y-6" x-show="authMode === 'email'">
+                        <div>
+                            <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">Admin Identity</label>
+                            <input x-model="loginEmail" type="email" placeholder="admin@yourdomain.com"
+                                class="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-medium">
+                        </div>
+                        <button @click="sendMagicLink()" :disabled="loading"
+                            class="w-full bg-white text-black hover:bg-zinc-200 py-4 rounded-2xl font-bold transition-all shadow-xl flex items-center justify-center gap-3">
+                            <span x-show="!loading">Receive Magic Link</span>
+                            <span x-show="loading" class="animate-spin border-2 border-zinc-400 border-t-black rounded-full w-5 h-5"></span>
+                        </button>
+                        <button @click="authMode = 'token'" class="w-full text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">
+                            Use Setup Token
+                        </button>
+                    </div>
+
+                    <div class="space-y-6" x-show="authMode === 'token'">
+                        <div>
+                            <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">Setup Token</label>
+                            <input x-model="setupToken" type="text" placeholder="Paste 32-char token here..."
+                                class="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono text-sm tracking-tighter">
+                        </div>
+                        <button @click="tokenLogin()" :disabled="loading"
+                            class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-4 rounded-2xl font-bold transition-all shadow-xl shadow-purple-900/20 flex items-center justify-center gap-3">
+                            <span x-show="!loading">Authenticate Node</span>
+                            <span x-show="loading" class="animate-spin border-2 border-white border-t-transparent rounded-full w-5 h-5"></span>
+                        </button>
+                        <button @click="authMode = 'email'" class="w-full text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">
+                            Return to Magic Link
+                        </button>
+                    </div>
+
+                    <p class="mt-8 text-center text-zinc-600 text-[10px] uppercase font-bold tracking-widest">
+                        Unauthorized access is monitored.
+                    </p>
+                </div>
             </div>
         </div>
     </template>
 
-    <!-- MAIN DASHBOARD -->
-    <div x-if="isAuthenticated" class="min-h-screen p-8 max-w-7xl mx-auto">
-        <header class="flex justify-between items-center mb-12">
-            <div>
-                <h1 class="text-4xl font-bold tracking-tight text-white">Fleet <span class="text-sky-400">Control</span>
-                </h1>
-                <p class="text-slate-400">Managing <span x-text="fleet.length"></span> active nodes</p>
-            </div>
-            <div class="flex items-center gap-4">
-                <div class="glass px-4 py-2 rounded-full text-sm flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                    Central Registry: Online (Real-time)
-                </div>
-                <button @click="logout()" class="text-slate-500 hover:text-white transition">Logout</button>
-            </div>
-        </header>
-
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
-
-            <!-- SERVER LIST -->
-            <div class="lg:col-span-1 space-y-4">
-                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500 mb-4">Active Servers</h2>
-                <template x-for="ip in fleet">
-                    <div :class="selectedIP === ip ? 'border-sky-500 bg-sky-900/20' : 'hover:border-slate-600'"
-                        class="glass p-4 rounded-xl cursor-pointer transition-all border border-transparent group flex justify-between items-center">
-                        <div @click="selectServer(ip)" class="flex-1">
-                            <span class="font-medium text-slate-200" x-text="ip"></span>
+    <!-- DASHBOARD SHELL -->
+    <div x-if="isAuthenticated" class="min-h-screen flex flex-col">
+        
+        <!-- TOP NAV -->
+        <nav class="border-b border-white/5 bg-zinc-950/50 sticky top-0 z-40 backdrop-blur-md">
+            <div class="max-w-[1600px] mx-auto px-6 h-20 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 bg-cyan-500/10 rounded-xl flex items-center justify-center border border-cyan-500/20">
+                        <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-lg tracking-tight">CICD <span class="text-zinc-500">ORCHESTRATOR</span></h2>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span class="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Telemetry Active</span>
                         </div>
-                        <button @click.stop="viewSystemLogs(ip)" title="System Logs"
-                            class="p-2 hover:bg-slate-700 rounded-lg text-slate-500 hover:text-sky-400 transition">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z">
-                                </path>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-6">
+                    <div class="hidden md:flex items-center gap-8 text-sm font-semibold">
+                        <a href="#" class="text-white hover:text-cyan-400 transition">Dashboard</a>
+                        <a href="#" @click="fetchSettings(); showSettingsModal = true" class="text-zinc-400 hover:text-white transition">Infrastructure</a>
+                        <a href="#" @click="showPortsModal = true; fetchPorts()" class="text-zinc-400 hover:text-white transition">Port Mapping</a>
+                    </div>
+                    <div class="h-8 w-[1px] bg-white/5 hidden md:block"></div>
+                    <button @click="logout()" class="text-zinc-500 hover:text-rose-400 transition p-2">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <main class="flex-1 max-w-[1600px] mx-auto w-full p-6 grid grid-cols-12 gap-6">
+            
+            <!-- LEFT: SERVER TREE -->
+            <aside class="col-span-12 lg:col-span-3 space-y-6">
+                <div class="flex items-center justify-between px-2">
+                    <h3 class="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Deployment Fleet</h3>
+                    <span class="bg-zinc-900 text-zinc-400 text-[10px] px-2 py-0.5 rounded-md font-bold" x-text="fleet.length + ' Nodes'"></span>
+                </div>
+                <div class="space-y-3">
+                    <template x-for="ip in fleet">
+                        <button @click="selectServer(ip)"
+                            :class="selectedIP === ip ? 'bg-cyan-500/10 border-cyan-500/50 ring-1 ring-cyan-500/20' : 'bg-zinc-900/40 border-white/5 hover:border-white/10 hover:bg-zinc-900/60'"
+                            class="w-full p-5 rounded-2xl border flex items-center justify-between transition-all group">
+                            <div class="flex items-center gap-4">
+                                <div :class="selectedIP === ip ? 'bg-cyan-500' : 'bg-zinc-800'" class="w-2 h-2 rounded-full shadow-sm"></div>
+                                <div class="text-left">
+                                    <p :class="selectedIP === ip ? 'text-white' : 'text-zinc-400'" class="font-bold text-sm" x-text="ip"></p>
+                                    <p class="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mt-0.5">Primary Node</p>
+                                </div>
+                            </div>
+                            <svg class="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                             </svg>
                         </button>
+                    </template>
+                </div>
+
+                <!-- QUICK ACTIONS -->
+                <div class="glass p-6 rounded-3xl border border-white/5 mt-8">
+                    <h4 class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-6">Master Controls</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button @click="showCreateModal = true" class="p-4 bg-zinc-900/60 rounded-2xl border border-white/5 hover:border-cyan-500/50 transition-all group">
+                            <div class="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                </svg>
+                            </div>
+                            <p class="text-[10px] font-black text-white uppercase">New App</p>
+                        </button>
+                        <button @click="viewSystemLogs(selectedIP)" :disabled="!selectedIP" class="p-4 bg-zinc-900/60 rounded-2xl border border-white/5 hover:border-purple-500/50 transition-all group disabled:opacity-50">
+                            <div class="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                            </div>
+                            <p class="text-[10px] font-black text-white uppercase">Sys Log</p>
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- CENTER: PROJECT GRID & TELEMETRY -->
+            <section class="col-span-12 lg:col-span-9 space-y-6">
+                
+                <template x-if="!selectedIP">
+                    <div class="h-[600px] glass rounded-[3rem] border border-white/5 flex flex-col items-center justify-center text-center p-12">
+                        <div class="w-24 h-24 bg-zinc-900/80 rounded-full flex items-center justify-center mb-8 border border-white/5 relative">
+                            <div class="absolute inset-0 bg-cyan-500/20 blur-2xl animate-pulse"></div>
+                            <svg class="w-10 h-10 text-cyan-400 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                            </svg>
+                        </div>
+                        <h3 class="text-3xl font-black tracking-tight mb-4">Awaiting Node Selection</h3>
+                        <p class="text-zinc-500 max-w-sm font-medium">Connect to an active deployment node to view real-time telemetry and project status.</p>
                     </div>
                 </template>
 
-                <!-- GLOBAL SETTINGS BUTTON -->
-                <button @click="fetchSettings(); showSettingsModal = true"
-                    class="w-full mt-8 p-4 glass rounded-xl border border-slate-800 hover:border-amber-500/50 transition-all group flex items-center gap-3">
-                    <div class="p-2 bg-amber-500/10 rounded-lg group-hover:bg-amber-500/20 transition-colors">
-                        <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
-                            </path>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        </svg>
-                    </div>
-                    <div class="text-left">
-                        <div class="text-sm font-bold text-slate-200">Global Settings</div>
-                        <div class="text-[10px] text-slate-500 uppercase tracking-tighter">Infrastructure Control</div>
-                    </div>
-                </button>
-            </div>
-
-            <!-- PROJECT DETAILS -->
-            <div class="lg:col-span-3 space-y-8">
                 <template x-if="selectedIP">
-                    <div>
-                        <div class="flex justify-between items-end mb-6">
-                            <div>
-                                <h2 class="text-2xl font-semibold">Apps on <span class="text-sky-400"
-                                        x-text="selectedIP"></span></h2>
-                                <span class="text-[10px] text-green-400 italic">● Live Sync Active</span>
+                    <div class="space-y-6">
+                        <!-- HEADER STATS -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="glass p-6 rounded-[2rem] border border-white/5">
+                                <p class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Total Load</p>
+                                <div class="flex items-end gap-2">
+                                    <span class="text-3xl font-black text-white" x-text="calculateTotalCPU() + '%'"></span>
+                                    <span class="text-emerald-500 text-[10px] font-bold mb-1.5 uppercase">Avg CPU</span>
+                                </div>
+                                <div class="progress-bar mt-4">
+                                    <div class="progress-fill bg-cyan-500" :style="'width: ' + calculateTotalCPU() + '%'"></div>
+                                </div>
                             </div>
-                            <button @click="showCreateModal = true"
-                                class="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
-                                        d="M12 4v16m8-8H4"></path>
-                                </svg>
-                                Add Project
-                            </button>
+                            <div class="glass p-6 rounded-[2rem] border border-white/5">
+                                <p class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Active Services</p>
+                                <div class="flex items-end gap-2">
+                                    <span class="text-3xl font-black text-white" x-text="projects.filter(p => p.is_running).length"></span>
+                                    <span class="text-zinc-500 text-[10px] font-bold mb-1.5 uppercase">/ <span x-text="projects.length"></span> Total</span>
+                                </div>
+                                <div class="progress-bar mt-4">
+                                    <div class="progress-fill bg-purple-500" :style="'width: ' + (projects.filter(p => p.is_running).length / projects.length * 100) + '%'"></div>
+                                </div>
+                            </div>
+                            <div class="glass p-6 rounded-[2rem] border border-white/5">
+                                <p class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Node Uptime</p>
+                                <div class="flex items-end gap-2">
+                                    <span class="text-3xl font-black text-white" x-text="getOldestUptime()"></span>
+                                </div>
+                                <div class="flex items-center gap-1.5 mt-4">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                                    <span class="text-[10px] font-black text-zinc-500 uppercase">System Peak Stability</span>
+                                </div>
+                            </div>
                         </div>
 
-                        <div x-show="showCreateModal"
-                            class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
-                            x-transition x-cloak>
-                            <div class="glass p-8 rounded-3xl w-full max-w-2xl glow max-h-[90vh] overflow-y-auto"
-                                @click.away="showCreateModal = false">
-                                <div class="flex justify-between items-center mb-6">
-                                    <h3 class="text-2xl font-bold text-sky-400">Add New Project</h3>
-                                    <button @click="showCreateModal = false"
-                                        class="text-slate-500 hover:text-white transition">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M6 18L18 6M6 6l12 12"></path>
-                                        </svg>
-                                    </button>
-                                </div>
-
-                                <div class="space-y-8">
-                                    <!-- SECTION 1: CORE CONFIG -->
-                                    <section>
-                                        <h4
-                                            class="text-[10px] font-black text-sky-500/50 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                            <span class="w-8 h-[1px] bg-sky-500/20"></span> Core Configuration
-                                        </h4>
-                                        <div class="space-y-4">
-                                            <div>
-                                                <label
-                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Repo
-                                                    URL <span class="text-rose-500">*</span></label>
-                                                <input x-model="newProject.repo_url" type="text"
-                                                    placeholder="https://github.com/user/repo"
-                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-sky-500 transition">
+                        <!-- PROJECT GRID -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
+                            <template x-for="p in projects">
+                                <div class="glass p-6 rounded-[2.5rem] border border-white/5 group relative transition-all" 
+                                    @click="viewLogs(p)">
+                                    
+                                    <!-- Status Badge -->
+                                    <div class="absolute top-6 right-6 flex items-center gap-2">
+                                        <div :class="p.is_running ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'"
+                                            class="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-white/5">
+                                            <span x-text="p.is_running ? 'Online' : 'Offline'"></span>
+                                        </div>
+                                        <template x-if="p.IsPinned">
+                                            <div class="bg-amber-500/20 text-amber-400 p-1 rounded-lg border border-amber-500/20 glow-amber" title="Pinned: No deployments">
+                                                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M4.49 3a.75.75 0 00-.51 1.307l.11.103v5.183l-.61 1.222a.75.75 0 00.671 1.085h2.999v4.35a.75.75 0 001.28.53l4-4a.75.75 0 00-.53-1.28H8.91l.61-1.222V4.41l.11-.103A.75.75 0 009.12 3H4.49z" />
+                                                </svg>
                                             </div>
-                                            <div class="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label
-                                                        class="block text-xs font-bold text-slate-500 uppercase mb-1">Service
-                                                        Name <span class="text-rose-500">*</span></label>
-                                                    <input x-model="newProject.service_name" type="text"
-                                                        placeholder="my-app"
-                                                        class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-sky-500 transition">
-                                                </div>
-                                                <div>
-                                                    <label
-                                                        class="block text-xs font-bold text-slate-500 uppercase mb-1">Branch</label>
-                                                    <input x-model="newProject.branch" type="text" placeholder="main"
-                                                        class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-sky-500 transition">
-                                                </div>
+                                        </template>
+                                    </div>
+
+                                    <div class="mb-6">
+                                        <h4 class="text-xl font-black text-white mb-1 group-hover:text-cyan-400 transition-colors" x-text="p.ServiceName"></h4>
+                                        <div class="flex items-center gap-2 text-[10px] font-bold text-zinc-500">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
+                                                <path d="M12 8v4l3 3" />
+                                            </svg>
+                                            <span x-text="p.Branch"></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- TELEMETRY BARS -->
+                                    <div class="space-y-4 mb-8">
+                                        <div>
+                                            <div class="flex justify-between text-[9px] font-black uppercase text-zinc-500 mb-1.5">
+                                                <span>CPU Compute</span>
+                                                <span x-text="p.cpu_percent.toFixed(1) + '%'"></span>
+                                            </div>
+                                            <div class="progress-bar">
+                                                <div class="progress-fill" 
+                                                    :class="p.cpu_percent > 80 ? 'bg-rose-500' : 'bg-cyan-500'"
+                                                    :style="'width: ' + p.cpu_percent + '%'"></div>
                                             </div>
                                         </div>
-                                    </section>
-
-                                    <!-- SECTION 2: SYSTEM & ACCESS -->
-                                    <section>
-                                        <h4
-                                            class="text-[10px] font-black text-purple-500/50 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                            <span class="w-8 h-[1px] bg-purple-500/20"></span> System & Access
-                                        </h4>
-                                        <div class="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label
-                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Service
-                                                    User</label>
-                                                <input x-model="newProject.service_user" type="text" placeholder="root"
-                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-purple-500 transition">
+                                        <div>
+                                            <div class="flex justify-between text-[9px] font-black uppercase text-zinc-500 mb-1.5">
+                                                <span>Memory Usage</span>
+                                                <span x-text="p.memory_mb.toFixed(0) + ' MB'"></span>
                                             </div>
-                                            <div>
-                                                <label
-                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Base
-                                                    Directory</label>
-                                                <input x-model="newProject.base_dir" type="text" placeholder="/home/"
-                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-purple-500 transition">
-                                            </div>
-                                            <div class="col-span-2">
-                                                <label
-                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Sudo
-                                                    Password (for auto-install)</label>
-                                                <input x-model="newProject.sudo_pass" type="password"
-                                                    placeholder="••••••••"
-                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-purple-500 transition">
+                                            <div class="progress-bar">
+                                                <div class="progress-fill bg-purple-500" 
+                                                    :style="'width: ' + Math.min((p.memory_mb / 2048) * 100, 100) + '%'"></div>
                                             </div>
                                         </div>
-                                    </section>
+                                    </div>
 
-                                    <!-- SECTION 3: CONNECTIVITY & SECURITY -->
-                                    <section>
-                                        <h4
-                                            class="text-[10px] font-black text-amber-500/50 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                            <span class="w-8 h-[1px] bg-amber-500/20"></span> Connectivity & Security
-                                        </h4>
-                                        <div class="space-y-4">
-                                            <div>
-                                                <label
-                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">MongoDB
-                                                    Sync URI</label>
-                                                <input x-model="newProject.mongodb_uri" type="text"
-                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 transition">
-                                            </div>
-                                            <div class="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label
-                                                        class="block text-xs font-bold text-slate-500 uppercase mb-1">Webhook
-                                                        Port</label>
-                                                    <input x-model.number="newProject.webhook_port" type="number"
-                                                        class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 transition">
-                                                </div>
-                                                <div>
-                                                    <label
-                                                        class="block text-xs font-bold text-slate-500 uppercase mb-1">Webhook
-                                                        Secret</label>
-                                                    <input x-model="newProject.webhook_secret" type="password"
-                                                        placeholder="••••••••"
-                                                        class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 transition">
-                                                </div>
-                                            </div>
+                                    <!-- PROJECT DETAILS -->
+                                    <div class="grid grid-cols-2 gap-4 mb-8">
+                                        <div class="bg-zinc-900/60 p-3 rounded-2xl border border-white/5">
+                                            <p class="text-[9px] font-black text-zinc-600 uppercase mb-1">PID</p>
+                                            <p class="text-xs font-mono font-bold text-zinc-300" x-text="p.pid || '---'"></p>
                                         </div>
-                                    </section>
+                                        <div class="bg-zinc-900/60 p-3 rounded-2xl border border-white/5">
+                                            <p class="text-[9px] font-black text-zinc-600 uppercase mb-1">Ports</p>
+                                            <p class="text-xs font-mono font-bold text-emerald-400" x-text="p.ports?.join(', ') || '---'"></p>
+                                        </div>
+                                    </div>
 
-                                    <!-- SECTION 4: NOTIFICATIONS (ALERTS) -->
-                                    <section>
-                                        <div class="flex justify-between items-center mb-4">
-                                            <h4
-                                                class="text-[10px] font-black text-rose-500/50 uppercase tracking-widest flex items-center gap-2">
-                                                <span class="w-8 h-[1px] bg-rose-500/20"></span> Alerts & Notifications
-                                            </h4>
-                                            <button @click="showAdvanced = !showAdvanced"
-                                                class="text-[10px] font-bold text-slate-500 hover:text-rose-400 transition uppercase tracking-tighter"
-                                                x-text="showAdvanced ? 'Hide SMTP' : 'Custom SMTP'"></button>
-                                        </div>
-                                        <div class="space-y-4">
-                                            <div>
-                                                <label
-                                                    class="block text-xs font-bold text-slate-500 uppercase mb-1">Admin
-                                                    Email</label>
-                                                <input x-model="newProject.admin_email" type="email"
-                                                    placeholder="admin@domain.com"
-                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-rose-500 transition">
-                                            </div>
-                                            <div x-show="showAdvanced" x-transition
-                                                class="p-4 bg-slate-900/50 rounded-2xl border border-slate-800 space-y-4">
-                                                <div class="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label
-                                                            class="block text-[10px] font-bold text-slate-500 uppercase mb-1">SMTP
-                                                            Host</label>
-                                                        <input x-model="newProject.smtp_host" type="text"
-                                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs outline-none">
-                                                    </div>
-                                                    <div>
-                                                        <label
-                                                            class="block text-[10px] font-bold text-slate-500 uppercase mb-1">SMTP
-                                                            Port</label>
-                                                        <input x-model.number="newProject.smtp_port" type="number"
-                                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs outline-none">
-                                                    </div>
-                                                </div>
-                                                <div class="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label
-                                                            class="block text-[10px] font-bold text-slate-500 uppercase mb-1">SMTP
-                                                            User</label>
-                                                        <input x-model="newProject.smtp_user" type="text"
-                                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs outline-none">
-                                                    </div>
-                                                    <div>
-                                                        <label
-                                                            class="block text-[10px] font-bold text-slate-500 uppercase mb-1">SMTP
-                                                            Pass</label>
-                                                        <input x-model="newProject.smtp_pass" type="password"
-                                                            class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs outline-none">
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </section>
-
-                                    <!-- SECTION 5: SOURCE CONTROL AUTH -->
-                                    <section>
-                                        <h4
-                                            class="text-[10px] font-black text-emerald-500/50 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                            <span class="w-8 h-[1px] bg-emerald-500/20"></span> Source Control Auth
-                                        </h4>
-                                        <div class="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Git
-                                                    Username</label>
-                                                <input x-model="newProject.git_username" type="text"
-                                                    placeholder="Optional"
-                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition">
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Git
-                                                    Password/Token</label>
-                                                <input x-model="newProject.git_password" type="password"
-                                                    placeholder="Optional"
-                                                    class="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition">
-                                            </div>
-                                        </div>
-                                    </section>
-
-                                    <div class="flex gap-4 pt-6">
-                                        <button @click="createProject()" :disabled="loading"
-                                            class="flex-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 p-4 rounded-xl font-bold transition flex justify-center items-center gap-2 shadow-lg shadow-sky-900/20">
-                                            <span x-show="!loading">🚀 Launch Deployment</span>
-                                            <span x-show="loading"
-                                                class="animate-spin border-2 border-white border-t-transparent rounded-full w-5 h-5"></span>
+                                    <!-- ACTIONS -->
+                                    <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                        <button @click.stop="viewHistory(p)" class="flex-1 bg-zinc-800 hover:bg-zinc-700 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">History</button>
+                                        <button @click.stop="togglePin(p)" :class="p.IsPinned ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-500 bg-zinc-800'" class="px-3 rounded-xl transition-colors">
+                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4.49 3a.75.75 0 00-.51 1.307l.11.103v5.183l-.61 1.222a.75.75 0 00.671 1.085h2.999v4.35a.75.75 0 001.28.53l4-4a.75.75 0 00-.53-1.28H8.91l.61-1.222V4.41l.11-.103A.75.75 0 009.12 3H4.49z" /></svg>
                                         </button>
-                                        <button @click="showCreateModal = false"
-                                            class="px-8 py-4 border border-slate-700 hover:bg-slate-800 rounded-xl font-bold transition">Cancel</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                            <template x-for="project in projects">
-                                <div @click="viewLogs(project)"
-                                    class="glass p-6 rounded-2xl hover:scale-[1.01] transition cursor-pointer relative overflow-hidden group">
-
-                                    <div class="flex justify-between items-start mb-1">
-                                        <h3 class="text-xl font-bold" x-text="project.ServiceName"></h3>
-                                        <div class="flex items-center gap-1.5">
-                                            <span :class="project.IsRunning ? 'bg-green-500' : 'bg-red-500'"
-                                                class="w-2 h-2 rounded-full animate-pulse"></span>
-                                            <span class="text-[10px] font-bold uppercase text-slate-500"
-                                                x-text="project.IsRunning ? 'Live' : 'Stopped'"></span>
+                                        <button @click.stop="redeployProject(p)" class="flex-1 bg-cyan-600 hover:bg-cyan-500 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">Deploy</button>
+                                        <div class="relative" x-data="{ open: false }">
+                                            <button @click.stop="open = !open" class="bg-zinc-800 hover:bg-zinc-700 p-2.5 rounded-xl transition-colors">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" /></svg>
+                                            </button>
+                                            <div x-show="open" @click.away="open = false" class="absolute bottom-full right-0 mb-2 w-48 glass rounded-2xl border border-white/10 p-2 z-50">
+                                                <button @click="stopProject(p)" class="w-full text-left p-3 text-xs font-bold text-rose-500 hover:bg-rose-500/10 rounded-xl transition">Stop Process</button>
+                                                <button @click="forceReinstall(p)" class="w-full text-left p-3 text-xs font-bold text-amber-500 hover:bg-amber-500/10 rounded-xl transition">Force Reinstall</button>
+                                                <button @click="runCustomCommand(p)" class="w-full text-left p-3 text-xs font-bold text-zinc-400 hover:bg-white/5 rounded-xl transition">Run Bash Command</button>
+                                                <div class="h-[1px] bg-white/5 my-2"></div>
+                                                <button @click="deleteProject(p)" class="w-full text-left p-3 text-xs font-bold text-zinc-600 hover:text-white hover:bg-rose-600 rounded-xl transition">Delete Forever</button>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <p class="text-slate-500 text-[11px] mb-4 truncate" x-text="project.RepoURL"></p>
-
-                                    <div class="grid grid-cols-2 gap-y-2 mb-4">
-                                        <div class="flex items-center gap-2 text-[10px] text-slate-400">
-                                            <svg class="w-3.5 h-3.5 text-sky-500/50" fill="none" stroke="currentColor"
-                                                viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z">
-                                                </path>
-                                            </svg>
-                                            <span class="text-sky-500/50 font-bold">USER:</span>
-                                            <span class="font-bold uppercase text-slate-300"
-                                                x-text="project.ServiceUser"></span>
-                                        </div>
-                                        <div class="flex items-center gap-2 text-[10px] text-slate-400">
-                                            <span class="text-sky-500/50 font-bold">PID:</span>
-                                            <span class="font-mono text-slate-300" x-text="project.PID || '---'"></span>
-                                        </div>
-                                        <div class="flex items-center gap-2 text-[10px] text-slate-400 col-span-2">
-                                            <svg class="w-3.5 h-3.5 text-sky-500/50" fill="none" stroke="currentColor"
-                                                viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z">
-                                                </path>
-                                            </svg>
-                                            <span class="truncate italic" x-text="project.ServiceDir"></span>
-                                        </div>
-                                        <div class="flex items-center gap-2 text-[10px] text-slate-400">
-                                            <svg class="w-3.5 h-3.5 text-sky-500/50" fill="none" stroke="currentColor"
-                                                viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                            </svg>
-                                            <span class="text-sky-500/50 font-bold">UPTIME:</span>
-                                            <span x-text="project.Uptime"></span>
-                                        </div>
-                                        <div class="flex items-center gap-2 text-[10px] text-slate-400">
-                                            <svg class="w-3.5 h-3.5 text-sky-500/50" fill="none" stroke="currentColor"
-                                                viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
-                                                </path>
-                                            </svg>
-                                            <span class="text-sky-500/50 font-bold">BRANCH:</span>
-                                            <span class="font-mono" x-text="project.Branch"></span>
-                                        </div>
-                                    </div>
-
-                                    <!-- REMOTE ACTIONS -->
-                                    <div
-                                        class="flex gap-2 mt-4 border-t border-slate-800 pt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button @click.stop="stopProject(project)"
-                                            class="flex-1 bg-red-900/40 hover:bg-red-900/60 text-red-400 text-[10px] font-bold py-1.5 rounded uppercase transition">Stop</button>
-                                        <button @click.stop="redeployProject(project)"
-                                            class="flex-1 bg-sky-900/40 hover:bg-sky-900/60 text-sky-400 text-[10px] font-bold py-1.5 rounded uppercase transition">Deploy</button>
-                                        <button @click.stop="runCommand(project)"
-                                            class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold py-1.5 rounded uppercase transition">Run
-                                            Cmd</button>
-                                        <button @click.stop="deleteProject(project)"
-                                            class="flex-1 bg-red-600/20 hover:bg-red-600/40 text-red-500 text-[10px] font-bold py-1.5 rounded uppercase transition">Delete</button>
                                     </div>
                                 </div>
                             </template>
                         </div>
 
-                        <!-- LOG VIEWER -->
-                        <template x-if="selectedProject || systemLogsActive">
-                            <div class="space-y-4">
-                                <div class="flex justify-between items-center">
-                                    <h3 class="text-lg font-semibold">
-                                        <span
-                                            x-text="selectedProject ? 'Live Stream: ' + selectedProject.ServiceName : 'System Stream: ' + selectedIP"></span>
+                        <!-- LIVE LOG TERMINAL -->
+                        <div x-show="selectedProject || systemLogsActive" class="space-y-4 pt-6" x-transition>
+                            <div class="flex justify-between items-center px-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-3 h-3 bg-cyan-500 rounded-full animate-pulse"></div>
+                                    <h3 class="text-xs font-black uppercase tracking-widest text-zinc-400">
+                                        Live Stream: <span class="text-white" x-text="selectedProject ? selectedProject.ServiceName : 'System Logs'"></span>
                                     </h3>
-                                    <button @click="closeLogs()"
-                                        class="text-xs text-slate-500 hover:text-white underline">Close
-                                        Stream</button>
                                 </div>
-                                <div id="log-terminal"
-                                    class="terminal p-6 rounded-xl h-96 overflow-y-auto text-sm text-sky-400 border border-slate-800 shadow-2xl">
-                                    <div x-ref="logContainer" x-html="formatLogs(activeLogs)"></div>
+                                <button @click="closeLogs()" class="text-[10px] font-black uppercase text-zinc-500 hover:text-white transition">Terminate Stream</button>
+                            </div>
+                            <div class="terminal h-96 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
+                                <div class="absolute top-0 left-0 right-0 h-10 bg-zinc-950/80 backdrop-blur-md border-b border-white/5 flex items-center px-6 justify-between">
+                                    <div class="flex gap-1.5">
+                                        <div class="w-2.5 h-2.5 rounded-full bg-rose-500/30 border border-rose-500/50"></div>
+                                        <div class="w-2.5 h-2.5 rounded-full bg-amber-500/30 border border-amber-500/50"></div>
+                                        <div class="w-2.5 h-2.5 rounded-full bg-emerald-500/30 border border-emerald-500/50"></div>
+                                    </div>
+                                    <span class="text-[9px] font-mono text-zinc-600">STDOUT / STDERR</span>
+                                </div>
+                                <div class="pt-14 p-8 h-full overflow-y-auto text-xs leading-relaxed text-zinc-400" id="log-container">
+                                    <pre class="font-mono" x-html="formatLogs(activeLogs)"></pre>
                                 </div>
                             </div>
-                        </template>
+                        </div>
                     </div>
                 </template>
-                <template x-if="!selectedIP">
-                    <div
-                        class="h-96 flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-3xl">
-                        <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10">
-                            </path>
-                        </svg>
-                        <p class="text-lg">Select a server to enter real-time control</p>
-                    </div>
-                </template>
-            </div>
-            </template>
-        </div>
+            </section>
+        </main>
 
-        <!-- GLOBAL SETTINGS MODAL -->
-        <div x-show="showSettingsModal"
-            class="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-50 flex items-center justify-center p-4"
-            x-transition x-cloak>
-            <div class="glass p-10 rounded-[2.5rem] w-full max-w-2xl glow-amber overflow-y-auto max-h-[90vh]"
-                @click.away="showSettingsModal = false">
+        <!-- COMMIT HISTORY MODAL -->
+        <div x-show="showHistoryModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition x-cloak>
+            <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="showHistoryModal = false"></div>
+            <div class="glass p-10 rounded-[3rem] w-full max-w-4xl border border-white/10 shadow-2xl relative z-10 max-h-[85vh] flex flex-col">
                 <div class="flex justify-between items-center mb-8">
                     <div>
-                        <h3 class="text-3xl font-black text-amber-500 tracking-tighter">Infrastructure Settings</h3>
-                        <p class="text-slate-500 text-sm mt-1">Changes here will restart the core orchestrator engine.
-                        </p>
+                        <h3 class="text-3xl font-black text-white tracking-tighter" x-text="historyProject?.ServiceName + ' Timeline'"></h3>
+                        <p class="text-zinc-500 text-sm mt-1 font-medium">Historical snapshots available for rollback.</p>
                     </div>
-                    <button @click="showSettingsModal = false" class="text-slate-500 hover:text-white transition">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
+                    <button @click="showHistoryModal = false" class="text-zinc-500 hover:text-white transition">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
 
+                <div class="flex-1 overflow-y-auto pr-4 space-y-4">
+                    <template x-for="h in history">
+                        <div class="bg-zinc-900/40 border border-white/5 rounded-3xl p-6 flex items-center justify-between hover:bg-zinc-900/60 transition-all">
+                            <div class="flex items-center gap-6">
+                                <div :class="h.status === 'current' ? 'bg-emerald-500 glow-cyan' : h.status === 'rolled_back' ? 'bg-rose-500 glow-rose' : 'bg-zinc-800'"
+                                    class="w-3 h-3 rounded-full"></div>
+                                <div>
+                                    <div class="flex items-center gap-3 mb-1">
+                                        <span class="font-mono text-cyan-400 font-bold" x-text="h.commit_hash.substring(0, 8)"></span>
+                                        <span :class="h.status === 'current' ? 'text-emerald-400' : 'text-zinc-500'" 
+                                            class="text-[9px] font-black uppercase tracking-[0.2em]" x-text="h.status"></span>
+                                    </div>
+                                    <p class="text-zinc-300 font-medium line-clamp-1" x-text="h.commit_msg || 'No commit message'"></p>
+                                    <p class="text-[10px] text-zinc-600 font-bold uppercase mt-1" x-text="formatDate(h.started_at) + ' • ' + h.triggered_by"></p>
+                                </div>
+                            </div>
+                            <button @click="rollbackTo(h.commit_hash)" :disabled="h.status === 'current' || loading"
+                                class="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest disabled:opacity-30 transition-all">
+                                Rollback
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- GLOBAL INFRASTRUCTURE MODAL -->
+        <div x-show="showSettingsModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition x-cloak>
+            <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="showSettingsModal = false"></div>
+            <div class="glass p-12 rounded-[3.5rem] w-full max-w-2xl border border-white/10 shadow-2xl relative z-10 overflow-y-auto max-h-[90vh]">
+                <h3 class="text-4xl font-black text-amber-500 tracking-tighter mb-4">Infrastructure Control</h3>
+                <p class="text-zinc-500 text-sm mb-12 font-medium">Core orchestrator settings. Modifying these will trigger a service restart.</p>
+
                 <div class="space-y-10">
-                    <!-- CORE CONNECTIVITY -->
-                    <section class="space-y-4">
-                        <h4
-                            class="text-[10px] font-black text-amber-500/50 uppercase tracking-[0.2em] flex items-center gap-3">
-                            <span class="w-10 h-[1px] bg-amber-500/30"></span> Core Connectivity
-                        </h4>
-                        <div class="grid grid-cols-1 gap-6">
-                            <div class="relative group">
-                                <label
-                                    class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">Central
-                                    MongoDB URI</label>
-                                <input x-model="settings.mongodb_uri" type="text"
-                                    class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-mono">
-                            </div>
-                            <div class="grid grid-cols-2 gap-6">
-                                <div class="relative">
-                                    <label
-                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">Public
-                                        Management IP</label>
-                                    <input x-model="settings.public_ip" type="text" placeholder="Auto-detected if empty"
-                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-mono">
-                                </div>
-                                <div class="relative">
-                                    <label
-                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">Webhook
-                                        Secret</label>
-                                    <input x-model="settings.webhook_secret" type="password" placeholder="••••••••"
-                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all">
-                                </div>
-                            </div>
+                    <!-- SECTION 1: CORE ENGINE -->
+                    <section class="space-y-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <span class="w-8 h-[1px] bg-amber-500/30"></span>
+                            <span class="text-[10px] font-black text-amber-500/50 uppercase tracking-[0.2em]">Core Engine</span>
                         </div>
-                    </section>
-
-                    <!-- GLOBAL NOTIFICATIONS -->
-                    <section class="space-y-4">
-                        <h4
-                            class="text-[10px] font-black text-rose-500/50 uppercase tracking-[0.2em] flex items-center gap-3">
-                            <span class="w-10 h-[1px] bg-rose-500/30"></span> Global Notifications (SMTP)
-                        </h4>
                         <div class="space-y-6">
+                            <div class="relative group">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Central MongoDB URI</label>
+                                <input x-model="settings.mongodb_uri" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-mono">
+                            </div>
                             <div class="relative">
-                                <label
-                                    class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">Master
-                                    Admin Email</label>
-                                <input x-model="settings.admin_email" type="email"
-                                    class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Master Admin Email</label>
+                                <input x-model="settings.admin_email" type="email" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all">
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- SECTION 2: NETWORKING -->
+                    <section class="space-y-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <span class="w-8 h-[1px] bg-cyan-500/30"></span>
+                            <span class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">Networking & Webhooks</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-6">
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Management Port</label>
+                                <input x-model.number="settings.webhook_port" type="number" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                            </div>
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Public IP</label>
+                                <input x-model="settings.public_ip" type="text" placeholder="Auto-detect" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                            </div>
+                            <div class="relative col-span-2">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook Secret</label>
+                                <input x-model="settings.webhook_secret" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                            </div>
+                            <div class="relative col-span-2">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Slack/Discord Webhook URL</label>
+                                <input x-model="settings.notify_url" type="text" placeholder="https://hooks.slack.com/..." class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- SECTION 3: PERFORMANCE -->
+                    <section class="space-y-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <span class="w-8 h-[1px] bg-emerald-500/30"></span>
+                            <span class="text-[10px] font-black text-emerald-500/50 uppercase tracking-[0.2em]">Engine Performance</span>
+                        </div>
+                        <div class="relative">
+                            <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Global Deploy Timeout (Seconds)</label>
+                            <input x-model.number="settings.deploy_timeout" type="number" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
+                        </div>
+                    </section>
+
+                    <!-- SECTION 4: GLOBAL ALERTS -->
+                    <section class="space-y-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <span class="w-8 h-[1px] bg-rose-500/30"></span>
+                            <span class="text-[10px] font-black text-rose-500/50 uppercase tracking-[0.2em]">Global Notifications (SMTP)</span>
+                        </div>
+                        <div class="space-y-6">
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP Host</label>
+                                    <input x-model="settings.smtp_host" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                </div>
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP Port</label>
+                                    <input x-model.number="settings.smtp_port" type="number" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                </div>
                             </div>
                             <div class="grid grid-cols-2 gap-6">
                                 <div class="relative">
-                                    <label
-                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">SMTP
-                                        Host</label>
-                                    <input x-model="settings.smtp_host" type="text"
-                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP User</label>
+                                    <input x-model="settings.smtp_user" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
                                 </div>
                                 <div class="relative">
-                                    <label
-                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">SMTP
-                                        Port</label>
-                                    <input x-model.number="settings.smtp_port" type="number"
-                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-2 gap-6">
-                                <div class="relative">
-                                    <label
-                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">SMTP
-                                        User</label>
-                                    <input x-model="settings.smtp_user" type="text"
-                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
-                                </div>
-                                <div class="relative">
-                                    <label
-                                        class="absolute -top-2 left-4 bg-slate-900 px-2 text-[10px] font-bold text-slate-500 uppercase z-10">SMTP
-                                        Password</label>
-                                    <input x-model="settings.smtp_pass" type="password" placeholder="••••••••"
-                                        class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP Password</label>
+                                    <input x-model="settings.smtp_pass" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
                                 </div>
                             </div>
                         </div>
                     </section>
 
-                    <div class="flex gap-4 pt-4">
+                    <div class="flex gap-4 pt-6">
                         <button @click="updateSettings()" :disabled="loading"
-                            class="flex-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 p-5 rounded-[1.5rem] font-black transition flex justify-center items-center gap-3 shadow-2xl shadow-amber-900/40">
-                            <span x-show="!loading">💾 Save & Restart Engine</span>
-                            <span x-show="loading"
-                                class="animate-spin border-2 border-white border-t-transparent rounded-full w-5 h-5"></span>
+                            class="flex-1 bg-amber-600 hover:bg-amber-500 py-5 rounded-[1.5rem] font-black text-black transition-all shadow-xl shadow-amber-900/20 disabled:opacity-50">
+                            Apply & Restart Engine
                         </button>
-                        <button @click="showSettingsModal = false"
-                            class="px-10 py-5 border border-slate-800 hover:bg-slate-900 rounded-[1.5rem] font-bold transition">Cancel</button>
+                        <button @click="showSettingsModal = false" class="px-10 py-5 bg-zinc-900 rounded-[1.5rem] font-bold hover:bg-zinc-800 transition-colors">Cancel</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <script>
-            function dashboard() {
-                return {
-                    isAuthenticated: localStorage.getItem('cicd_token') ? true : false,
-                    loginEmail: '',
-                    fleet: [],
-                    selectedIP: null,
-                    projects: [],
-                    selectedProject: null,
-                    systemLogsActive: false,
-                    activeLogs: '',
-                    fleetStream: null,
-                    logStream: null,
-                    showCreateModal: false,
-                    showSettingsModal: false,
-                    showAdvanced: false,
-                    loading: false,
-                    settings: {},
-                    newProject: {
-                        repo_url: '',
-                        service_name: '',
-                        branch: 'main',
-                        service_user: 'root',
-                        base_dir: '/home/',
-                        public_ip: '',
-                        admin_email: '',
-                        git_username: '',
-                        git_password: '',
-                        webhook_secret: '',
-                        webhook_port: 9641,
-                        mongodb_uri: 'mongodb+srv://...',
-                        smtp_host: 'smtpout.secureserver.net',
-                        smtp_port: 465,
-                        smtp_user: '',
-                        smtp_pass: '',
-                        sudo_pass: ''
-                    },
+        <!-- CREATE PROJECT MODAL -->
+        <div x-show="showCreateModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition x-cloak>
+            <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="showCreateModal = false"></div>
+            <div class="glass p-12 rounded-[3.5rem] w-full max-w-2xl border border-white/10 shadow-2xl relative z-10 overflow-y-auto max-h-[90vh]">
+                <h3 class="text-4xl font-black text-cyan-400 tracking-tighter mb-4">Register Deployment</h3>
+                <p class="text-zinc-500 text-sm mb-12 font-medium">Configure source control and system execution parameters.</p>
+                
+                <div class="space-y-12">
+                    <!-- SOURCE CONTROL -->
+                    <section class="space-y-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <span class="w-8 h-[1px] bg-cyan-500/30"></span>
+                            <span class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">Source Control</span>
+                        </div>
+                        <div class="grid grid-cols-1 gap-6">
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Repository URL *</label>
+                                <input x-model="newProject.repo_url" type="text" placeholder="https://github.com/..." class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                            </div>
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Branch</label>
+                                    <input x-model="newProject.branch" type="text" placeholder="main" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                </div>
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git Username</label>
+                                    <input x-model="newProject.git_username" type="text" placeholder="Optional" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                </div>
+                                <div class="relative col-span-2">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git Personal Access Token</label>
+                                    <input x-model="newProject.git_password" type="password" placeholder="ghp_..." class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                                </div>
+                            </div>
+                        </div>
+                    </section>
 
-                    async init() {
-                        if (this.isAuthenticated) {
-                            this.checkExpiry();
-                            await this.fetchFleet();
-                            this.initFleetStream();
-                        }
-                    },
+                    <!-- SYSTEM & SERVICE -->
+                    <section class="space-y-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <span class="w-8 h-[1px] bg-purple-500/30"></span>
+                            <span class="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">System & Service</span>
+                        </div>
+                        <div class="grid grid-cols-1 gap-6">
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Service Name *</label>
+                                <input x-model="newProject.service_name" type="text" placeholder="my-app" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                            </div>
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">System User (OS)</label>
+                                    <input x-model="newProject.user" type="text" placeholder="e.g. ubuntu" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                </div>
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Deploy User (Identity)</label>
+                                    <input x-model="newProject.service_user" type="text" placeholder="e.g. root" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                </div>
+                            </div>
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Base Directory</label>
+                                <input x-model="newProject.base_dir" type="text" placeholder="/home/" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                            </div>
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Sudo Password (for Install Scripts)</label>
+                                <input x-model="newProject.sudo_pass" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                            </div>
+                        </div>
+                    </section>
 
-                    checkExpiry() {
-                        const token = localStorage.getItem('cicd_token');
-                        if (!token) return;
-                        try {
-                            const payload = JSON.parse(atob(token.split('.')[1]));
-                            if (payload.exp * 1000 < Date.now()) {
-                                this.logout();
-                            }
-                        } catch (e) { this.logout(); }
-                    },
+                    <div class="flex gap-4 pt-6">
+                        <button @click="createProject()" :disabled="loading"
+                            class="flex-1 bg-cyan-600 hover:bg-cyan-500 py-5 rounded-[1.5rem] font-black text-black transition-all shadow-xl shadow-cyan-900/20 disabled:opacity-50">
+                            Launch Production Deployment
+                        </button>
+                        <button @click="showCreateModal = false" class="px-10 py-5 bg-zinc-900 rounded-[1.5rem] font-bold hover:bg-zinc-800 transition-colors">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-                    initFleetStream() {
-                        if (this.fleetStream) this.fleetStream.close();
+    </div>
 
-                        // We connect to the current gateway for fleet status
-                        // But we might need to handle per-node status if nodes are independent
-                        this.fleetStream = new EventSource(`/api/stream/fleet?token=${localStorage.getItem('cicd_token')}`);
-                        this.fleetStream.onmessage = (e) => {
-                            try {
-                                const updatedProjects = JSON.parse(e.data);
-                                if (this.selectedIP && updatedProjects && updatedProjects.length > 0) {
-                                    //NO NEED TO FILTER SHOW ALL PROJECTS FROM A SERVER
+    <script>
+        function dashboard() {
+            return {
+                isAuthenticated: !!localStorage.getItem('cicd_token'),
+                authMode: 'email',
+                loginEmail: '',
+                setupToken: '',
+                loading: false,
+                fleet: [],
+                selectedIP: null,
+                projects: [],
+                selectedProject: null,
+                historyProject: null,
+                activeLogs: '',
+                systemLogsActive: false,
+                showCreateModal: false,
+                showSettingsModal: false,
+                showHistoryModal: false,
+                showPortsModal: false,
+                settings: {},
+                history: [],
+                fleetStream: null,
+                logStream: null,
+                newProject: {
+                    repo_url: '',
+                    service_name: '',
+                    branch: 'main',
+                    user: '',
+                    service_user: 'root',
+                    base_dir: '/home/',
+                    git_username: '',
+                    git_password: '',
+                    sudo_pass: ''
+                },
 
-                                    // Clean up the IPs for comparison (trim whitespace)
-                                    // const targetIP = this.selectedIP.trim();
-                                    // const filtered = updatedProjects.filter(p => 
-                                    //     p.PublicIp && p.PublicIp.trim() === targetIP
-                                    // );
+                init() {
+                    if (this.isAuthenticated) {
+                        this.fetchFleet();
+                        this.initFleetStream();
+                    }
+                },
 
-                                    // ONLY overwrite if we actually found projects for this IP
-                                    // This prevents the "disappearing" bug if the stream is partial
-                                    if (updatedProjects.length > 0) {
-                                        this.projects = updatedProjects;
-                                    }
-                                }
-                            } catch (err) {
-                                console.error("Failed to parse fleet update:", err);
-                            }
-                        };
-                        this.fleetStream.onerror = () => {
-                            console.error("Fleet stream disconnected. Retrying...");
-                        };
-                    },
-
-                    async fetchFleet() {
-                        const res = await fetch('/api/fleet', { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
-                        this.fleet = await res.json();
-                    },
-
-                    async selectServer(ip) {
-                        this.selectedIP = ip;
-                        this.closeLogs();
-                        // Initial load
-                        const res = await fetch(`http://${ip}:9641/api/projects`, {
-                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                        });
-                        this.projects = await res.json();
-                    },
-
-                    async viewLogs(project) {
-                        if (this.logStream) this.logStream.close();
-
-                        this.selectedProject = project;
-                        this.systemLogsActive = false;
-                        this.activeLogs = "--- Connecting to Log Stream ---\n";
-
-                        const url = `http://${this.selectedIP}:9641/api/projects/${project.ID}/logs/stream?token=${localStorage.getItem('cicd_token')}`;
-                        this.logStream = new EventSource(url);
-
-                        this.logStream.onmessage = (e) => {
-                            this.activeLogs += e.data + "\n";
-                            this.scrollToBottom();
-                        };
-
-                        this.logStream.onerror = () => {
-                            this.activeLogs += "⚠️ [STREAM ERROR] Connection lost. Reconnecting...\n";
-                        };
-                    },
-
-                    async viewSystemLogs(ip) {
-                        // System logs are currently static in the backend, but we can make them stream too
-                        // For now, let's keep it simple or implement /api/system/logs/stream
-                        this.selectedIP = ip;
-                        this.selectedProject = null;
-                        this.systemLogsActive = true;
-                        this.activeLogs = "Fetching static system snapshot...";
-                        const res = await fetch(`http://${ip}:9641/api/system/logs`, {
-                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                        });
-                        this.activeLogs = await res.text();
-                        this.scrollToBottom();
-                    },
-
-                    closeLogs() {
-                        if (this.logStream) {
-                            this.logStream.close();
-                            this.logStream = null;
-                        }
-                        this.selectedProject = null;
-                        this.systemLogsActive = false;
-                        this.activeLogs = '';
-                    },
-
-                    async stopProject(project) {
-                        if (!confirm(`Are you sure you want to STOP ${project.ServiceName}?`)) return;
-                        await fetch(`http://${this.selectedIP}:9641/api/projects/${project.ID}/stop`, {
-                            method: 'POST',
-                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                        });
-                    },
-
-                    async redeployProject(project) {
-                        if (!confirm(`Trigger full redeploy for ${project.ServiceName}?`)) return;
-                        await fetch(`http://${this.selectedIP}:9641/api/projects/${project.ID}/deploy`, {
-                            method: 'POST',
-                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                        });
-                    },
-
-                    async runCommand(project) {
-                        const cmd = prompt(`Enter bash command to run as ${project.ServiceUser}:`, "ls -la");
-                        if (!cmd) return;
-
-                        const res = await fetch(`http://${this.selectedIP}:9641/api/projects/${project.ID}/run`, {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': localStorage.getItem('cicd_token'),
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ command: cmd })
-                        });
-                        const output = await res.text();
-                        alert(`Output for "${cmd}":\n\n${output}`);
-                    },
-
-                    async deleteProject(project) {
-                        if (!confirm(`❌ CRITICAL: Are you sure you want to PERMANENTLY DELETE ${project.ServiceName}?\nThis will stop the process and remove it from the registry.`)) return;
-
-                        const res = await fetch(`http://${this.selectedIP}:9641/api/projects/${project.ID}`, {
-                            method: 'DELETE',
-                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                        });
-
-                        if (res.ok) {
-                            this.selectServer(this.selectedIP, true);
-                            alert("Project deleted successfully.");
-                        } else {
-                            alert("Failed to delete project: " + await res.text());
-                        }
-                    },
-
-                    formatLogs(text) {
-                        if (!text) return '';
-                        // Prevent HTML injection but allow our color spans
-                        const escape = (s) => s.replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-
-                        return text.split('\n').map(line => {
-                            let formatted = escape(line);
-                            formatted = formatted
-                                .replace(/\[INFO\]/g, '<span class="text-green-400">[INFO]</span>')
-                                .replace(/\[ERROR\]/g, '<span class="text-red-400 font-bold">[ERROR]</span>')
-                                .replace(/\[WARN\]/g, '<span class="text-yellow-400">[WARN]</span>')
-                                .replace(/SUCCESS/g, '<span class="text-emerald-400 font-bold">SUCCESS</span>')
-                                .replace(/FAILED/g, '<span class="text-rose-500 font-bold">FAILED</span>')
-                                .replace(/✅/g, '<span class="text-green-400">✅</span>')
-                                .replace(/⚠️/g, '<span class="text-yellow-400">⚠️</span>')
-                                .replace(/❌/g, '<span class="text-red-400">❌</span>');
-                            return formatted;
-                        }).join('<br>');
-                    },
-
-                    scrollToBottom() {
-                        this.$nextTick(() => {
-                            const el = document.getElementById('log-terminal');
-                            if (el) el.scrollTop = el.scrollHeight;
-                        });
-                    },
-
-                    async sendMagicLink() {
+                // AUTHENTICATION
+                async sendMagicLink() {
+                    this.loading = true;
+                    try {
                         const res = await fetch('/auth/magic-link', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ email: this.loginEmail })
                         });
-                        if (res.ok) alert('Magic link generated. Check system logs.');
-                    },
+                        if (res.ok) alert("Magic link sent! Check your email (or terminal logs).");
+                        else alert("Authentication failed. Check admin email config.");
+                    } finally { this.loading = false; }
+                },
 
-                    async createProject() {
-                        this.loading = true;
-                        try {
-                            const res = await fetch('/api/projects', {
-                                method: 'POST',
-                                headers: {
-                                    'Authorization': localStorage.getItem('cicd_token'),
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(this.newProject)
-                            });
-
-                            if (res.ok) {
-                                this.showCreateModal = false;
-                                this.newProject = { repo_url: '', service_name: '', branch: 'main', service_user: 'root' };
-                                alert("Project created! Deployment started in background.");
-                                this.selectServer(this.selectedIP, true); // Refresh list
-                            } else {
-                                alert("Failed to create project: " + await res.text());
-                            }
-                        } catch (e) {
-                            alert("Error: " + e.message);
-                        } finally {
-                            this.loading = false;
-                        }
-                    },
-
-                    async fetchSettings() {
-                        const res = await fetch('/api/settings', {
-                            headers: { 'Authorization': localStorage.getItem('cicd_token') }
+                async tokenLogin() {
+                    this.loading = true;
+                    try {
+                        const res = await fetch('/auth/token-login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ token: this.setupToken })
                         });
-                        this.settings = await res.json();
-                    },
-
-                    async updateSettings() {
-                        this.loading = true;
-                        try {
-                            const res = await fetch('/api/settings', {
-                                method: 'PUT',
-                                headers: {
-                                    'Authorization': localStorage.getItem('cicd_token'),
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(this.settings)
-                            });
-
-                            if (res.ok) {
-                                alert("Settings saved! Orchestrator is restarting. Please refresh in 5 seconds.");
-                                location.reload();
-                            } else {
-                                alert("Failed to save settings: " + await res.text());
-                            }
-                        } catch (e) {
-                            alert("Error: " + e.message);
-                        } finally {
-                            this.loading = false;
+                        const data = await res.json();
+                        if (res.ok) {
+                            localStorage.setItem('cicd_token', data.token);
+                            this.isAuthenticated = true;
+                            this.init();
+                        } else {
+                            alert(data.error || "Invalid token");
                         }
-                    },
+                    } finally { this.loading = false; }
+                },
 
-                    logout() {
-                        if (this.fleetStream) this.fleetStream.close();
-                        if (this.logStream) this.logStream.close();
-                        localStorage.removeItem('cicd_token');
-                        location.reload();
-                    }
+                logout() {
+                    localStorage.removeItem('cicd_token');
+                    location.reload();
+                },
+
+                // CORE DATA
+                async fetchFleet() {
+                    const res = await fetch('/api/fleet', { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
+                    if (res.status === 401) return this.logout();
+                    this.fleet = await res.json();
+                    if (this.fleet.length > 0 && !this.selectedIP) this.selectServer(this.fleet[0]);
+                },
+
+                initFleetStream() {
+                    if (this.fleetStream) this.fleetStream.close();
+                    this.fleetStream = new EventSource(`/api/stream/fleet?token=${localStorage.getItem('cicd_token')}`);
+                    this.fleetStream.onmessage = (e) => {
+                        const data = JSON.parse(e.data);
+                        if (data) this.projects = data;
+                    };
+                },
+
+                selectServer(ip) {
+                    this.selectedIP = ip;
+                    this.closeLogs();
+                },
+
+                // LOGS & TERMINAL
+                async viewLogs(p) {
+                    this.selectedProject = p;
+                    this.systemLogsActive = false;
+                    this.activeLogs = `--- CONNECTING TO ${p.ServiceName} STREAM ---\n`;
+                    this.initLogStream(p.ID);
+                },
+
+                async viewSystemLogs(ip) {
+                    this.systemLogsActive = true;
+                    this.selectedProject = null;
+                    const res = await fetch(`/api/system/logs`, { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
+                    this.activeLogs = await res.text();
+                },
+
+                initLogStream(id) {
+                    if (this.logStream) this.logStream.close();
+                    this.logStream = new EventSource(`/api/projects/${id}/logs/stream?token=${localStorage.getItem('cicd_token')}`);
+                    this.logStream.onmessage = (e) => {
+                        this.activeLogs += e.data + "\n";
+                        this.$nextTick(() => {
+                            const el = document.getElementById('log-container');
+                            if (el) el.scrollTop = el.scrollHeight;
+                        });
+                    };
+                },
+
+                closeLogs() {
+                    if (this.logStream) this.logStream.close();
+                    this.selectedProject = null;
+                    this.systemLogsActive = false;
+                    this.activeLogs = '';
+                },
+
+                formatLogs(text) {
+                    if (!text) return '';
+                    return text.replace(/\[INFO\]/g, '<span class="text-cyan-400 font-bold">[INFO]</span>')
+                               .replace(/\[ERROR\]/g, '<span class="text-rose-500 font-bold">[ERROR]</span>')
+                               .replace(/\[WARN\]/g, '<span class="text-amber-400 font-bold">[WARN]</span>')
+                               .replace(/✅/g, '<span class="text-emerald-400">✅</span>')
+                               .replace(/🔥/g, '<span class="text-rose-500 font-bold">🔥</span>');
+                },
+
+                // PROJECT ACTIONS
+                async createProject() {
+                    this.loading = true;
+                    try {
+                        const res = await fetch('/api/projects', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('cicd_token') },
+                            body: JSON.stringify(this.newProject)
+                        });
+                        if (res.ok) {
+                            this.showCreateModal = false;
+                            alert("Project registered and deployment initiated!");
+                        } else alert("Creation failed: " + await res.text());
+                    } finally { this.loading = false; }
+                },
+
+                async redeployProject(p) {
+                    if (!confirm(`Trigger new deployment for ${p.ServiceName}?`)) return;
+                    await fetch(`/api/projects/${p.ID}/deploy`, { 
+                        method: 'POST', 
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    });
+                },
+
+                async stopProject(p) {
+                    if (!confirm(`Stop process for ${p.ServiceName}?`)) return;
+                    await fetch(`/api/projects/${p.ID}/stop`, { 
+                        method: 'POST', 
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    });
+                },
+
+                async togglePin(p) {
+                    const action = p.IsPinned ? 'unpin' : 'pin';
+                    await fetch(`/api/projects/${p.ID}/${action}`, { 
+                        method: 'POST', 
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    });
+                },
+
+                async forceReinstall(p) {
+                    if (!confirm(`Wipe cache and force full install for ${p.ServiceName}?`)) return;
+                    await fetch(`/api/projects/${p.ID}/reinstall`, { 
+                        method: 'POST', 
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    });
+                },
+
+                async deleteProject(p) {
+                    if (!confirm(`DELETE ${p.ServiceName} PERMANENTLY?`)) return;
+                    await fetch(`/api/projects/${p.ID}`, { 
+                        method: 'DELETE', 
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    });
+                },
+
+                // HISTORY & ROLLBACK
+                async viewHistory(p) {
+                    this.historyProject = p;
+                    const res = await fetch(`/api/projects/${p.ID}/history`, { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
+                    this.history = await res.json();
+                    this.showHistoryModal = true;
+                },
+
+                async rollbackTo(hash) {
+                    if (!confirm(`ROLLBACK to ${hash.substring(0, 8)}? Current process will be replaced.`)) return;
+                    this.loading = true;
+                    try {
+                        await fetch(`/api/projects/${this.historyProject.ID}/rollback`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('cicd_token') },
+                            body: JSON.stringify({ commit_hash: hash })
+                        });
+                        this.showHistoryModal = false;
+                        alert("Rollback initiated. Check logs for progress.");
+                    } finally { this.loading = false; }
+                },
+
+                // SETTINGS
+                async fetchSettings() {
+                    const res = await fetch('/api/settings', { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
+                    this.settings = await res.json();
+                },
+
+                async updateSettings() {
+                    if (!confirm("Save and restart the orchestrator engine?")) return;
+                    this.loading = true;
+                    await fetch('/api/settings', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('cicd_token') },
+                        body: JSON.stringify(this.settings)
+                    });
+                    alert("Settings saved. Reconnecting in 5 seconds...");
+                    setTimeout(() => location.reload(), 5000);
+                },
+
+                // UTILS
+                calculateTotalCPU() {
+                    if (this.projects.length === 0) return 0;
+                    const sum = this.projects.reduce((acc, p) => acc + (p.cpu_percent || 0), 0);
+                    return (sum / this.projects.length).toFixed(1);
+                },
+
+                getOldestUptime() {
+                    // Placeholder for actual node uptime logic
+                    return "99.9%"; 
+                },
+
+                formatDate(dateStr) {
+                    if (!dateStr || dateStr.startsWith('0001')) return '---';
+                    const d = new Date(dateStr);
+                    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                },
+
+                closeModals() {
+                    this.showCreateModal = false;
+                    this.showSettingsModal = false;
+                    this.showHistoryModal = false;
                 }
-            }
-        </script>
+            };
+        }
+    </script>
 </body>
 
 </html>

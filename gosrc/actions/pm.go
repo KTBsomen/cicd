@@ -7,36 +7,103 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
+// ═══════════════════════════════════════════════════════
+//  4-Tier Process Model (B4)
+//
+//  Tier 1 — Blocking: run.sh never exits (node app.js)
+//  Tier 2 — Background: exits 0, children in our PGID
+//  Tier 3 — Delegating: exits 0, user wrote $CICD_PID_FILE
+//  Tier 4 — Install-only: no run.sh at all
+// ═══════════════════════════════════════════════════════
+
+type RunMode string
+
+const (
+	RunModeBlocking    RunMode = "blocking"
+	RunModeBackground  RunMode = "background"
+	RunModeDelegating  RunMode = "delegating"
+	RunModeInstallOnly RunMode = "install"
+)
+
 type ManagedProcess struct {
-	Cmd       *exec.Cmd
-	Config    *parser.Config
-	StartTime time.Time
+	Cmd          *exec.Cmd
+	Config       *parser.Config
+	StartTime    time.Time
+	Mode         RunMode
+	ExtPID       int // PID from $CICD_PID_FILE (tier 3)
+	ProcessGroup int // PGID to watch (tier 2)
+	RestartCount int
+	LastRestart  time.Time
 }
 
 var (
-	// registry tracks all active processes by ServiceName
+	// registry tracks all active processes by ServiceDir
 	registry sync.Map
 )
 
+// F7 — Restart backoff schedule (seconds)
+var backoffSchedule = []time.Duration{
+	2 * time.Second,
+	5 * time.Second,
+	15 * time.Second,
+	30 * time.Second,
+	60 * time.Second,
+	120 * time.Second,
+}
+
+const maxRestarts = 10
+const stableRunDuration = 5 * time.Minute // Reset restart count after stable run
+
 // StartAppProcess handles the lifecycle of the application process
 func StartAppProcess(cfg *parser.Config) error {
-	// 1. Kill any existing instance of this service (by its unique directory)
-	StopAppProcess(cfg.ServiceDir)
-
-	// code path inside {cfg.ServiceDir}/codebase
 	codebasePath := filepath.Join(cfg.ServiceDir, "codebase")
 	if _, err := os.Stat(codebasePath); os.IsNotExist(err) {
 		return fmt.Errorf("codebase not found in %s. Codebase might not be ready", codebasePath)
 	}
-	// run.sh  path inside {cfg.ServiceDir}/codebase/.cicd/run.sh
+
 	runScript := filepath.Join(codebasePath, ".cicd", "run.sh")
+	pidPath := filepath.Join(cfg.ServiceDir, ".cicdlog", "app.pid")
+
+	// EC-6: Delete stale PID file before doing anything
+	os.Remove(pidPath)
+
+	// Tier 4: No run.sh = install-only mode
 	if _, err := os.Stat(runScript); os.IsNotExist(err) {
-		return fmt.Errorf("run.sh not found in %s. Codebase might not be ready", codebasePath)
+		logger.Info("✅ No run.sh found. Install-only deployment complete.", cfg)
+		registry.Delete(cfg.ServiceDir)
+		return nil // Not an error
 	}
+
+	// EC-1: Check if process is already alive via PID file (daemon restart case)
+	if existingPID := readPIDFile(pidPath); existingPID > 0 {
+		if isProcessAlive(existingPID) {
+			logger.Info(fmt.Sprintf("♻️  Re-adopting existing process PID %d (still alive from before restart)", existingPID), cfg)
+			proc := &ManagedProcess{
+				Config:    cfg,
+				StartTime: time.Now(),
+				Mode:      RunModeDelegating,
+				ExtPID:    existingPID,
+			}
+			registry.Store(cfg.ServiceDir, proc)
+			// Write PID back (it was deleted above, but process is alive)
+			writePIDFile(pidPath, existingPID)
+			go watchSinglePID(proc)
+			return nil
+		}
+		// PID file exists but process dead — proceed to start fresh
+	}
+
+	// 1. Kill any existing instance of this service
+	StopAppProcess(cfg.ServiceDir)
+
+	// EC-5: Ensure the script is executable
+	os.Chmod(runScript, 0755)
 
 	// 2. Prepare the command
 	cmd := exec.Command("bash", runScript)
@@ -48,14 +115,21 @@ func StartAppProcess(cfg *parser.Config) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
-	// 3. Environment setup
-	cmd.Env = append(os.Environ(), "PORT="+fmt.Sprintf("%d", cfg.Webhook))
+	// 3. Environment setup — inject CICD env vars for all tiers
+	cmd.Env = append(os.Environ(),
+		"PORT="+fmt.Sprintf("%d", cfg.Webhook),
+		"CICD_LOG_DIR="+filepath.Join(cfg.ServiceDir, ".cicdlog"),
+		"CICD_PID_FILE="+pidPath,
+		"CICD_SERVICE_NAME="+cfg.ServiceName,
+		"CICD_SERVICE_DIR="+cfg.ServiceDir,
+	)
 
 	// 4. Platform-specific Process Group Isolation
 	prepareProcessGroup(cmd)
 
 	// 5. Launch as a background process
 	if err := cmd.Start(); err != nil {
+		logFile.Close()
 		return fmt.Errorf("failed to start process: %v", err)
 	}
 
@@ -64,10 +138,14 @@ func StartAppProcess(cfg *parser.Config) error {
 		Cmd:       cmd,
 		Config:    cfg,
 		StartTime: time.Now(),
+		Mode:      RunModeBlocking, // Default, will be refined in monitorProcess
 	}
 	registry.Store(cfg.ServiceDir, proc)
 
-	go monitorProcess(proc)
+	// Write the bash process PID (tier 1 and 2 both start as bash)
+	writePIDFile(pidPath, cmd.Process.Pid)
+
+	go monitorProcess(proc, logFile)
 
 	logger.Info(fmt.Sprintf("🚀 App '%s' started with PID %d (Managed by Go)", cfg.ServiceName, cmd.Process.Pid), cfg)
 	return nil
@@ -77,34 +155,268 @@ func StartAppProcess(cfg *parser.Config) error {
 func StopAppProcess(id string) {
 	if val, ok := registry.Load(id); ok {
 		proc := val.(*ManagedProcess)
-		logger.Info(fmt.Sprintf("🛑 Stopping service: %s (PID %d) at %s", proc.Config.ServiceName, proc.Cmd.Process.Pid, id), proc.Config)
 
 		// 1. Remove from registry FIRST to prevent watchdog from restarting it
 		registry.Delete(id)
 
-		// 2. Kill the entire process group/tree
-		killProcessGroup(proc.Cmd)
+		// Handle different modes
+		switch proc.Mode {
+		case RunModeDelegating:
+			if proc.ExtPID > 0 {
+				logger.Info(fmt.Sprintf("🛑 Stopping external process PID %d for %s", proc.ExtPID, proc.Config.ServiceName), proc.Config)
+				if p, err := os.FindProcess(proc.ExtPID); err == nil {
+					p.Signal(os.Interrupt)
+					time.Sleep(2 * time.Second)
+					p.Kill() // Force if still alive
+				}
+			}
+		case RunModeBackground:
+			logger.Info(fmt.Sprintf("🛑 Killing process group %d for %s", proc.ProcessGroup, proc.Config.ServiceName), proc.Config)
+			if proc.Cmd != nil {
+				killProcessGroup(proc.Cmd)
+			}
+		default: // RunModeBlocking
+			if proc.Cmd != nil {
+				logger.Info(fmt.Sprintf("🛑 Stopping service: %s (PID %d)", proc.Config.ServiceName, proc.Cmd.Process.Pid), proc.Config)
+				killProcessGroup(proc.Cmd)
+			}
+		}
+
+		// Clean up PID file
+		pidPath := filepath.Join(id, ".cicdlog", "app.pid")
+		os.Remove(pidPath)
 	}
 }
 
-// monitorProcess waits for the process to exit and handles restarts
-func monitorProcess(p *ManagedProcess) {
+// monitorProcess watches the bash process and detects the correct tier on exit
+func monitorProcess(p *ManagedProcess, logFile *os.File) {
+	defer func() {
+		if logFile != nil {
+			logFile.Close()
+		}
+	}()
+
+	pgid := 0
+	if p.Cmd != nil && p.Cmd.Process != nil {
+		pgid = p.Cmd.Process.Pid // PGID == bash PID (set by prepareProcessGroup)
+	}
+
 	err := p.Cmd.Wait()
 
-	// If it's still in the registry, it means it exited unexpectedly (not via StopAppProcess)
-	if _, ok := registry.Load(p.Config.ServiceDir); ok {
-		logger.Error(fmt.Sprintf("⚠️  Service '%s' exited unexpectedly: %v. Restarting...", p.Config.ServiceName, err), p.Config)
-		time.Sleep(2 * time.Second) // Prevent rapid-fire crashing
-		StartAppProcess(p.Config)
+	exitCode := 0
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exitCode = exitErr.ExitCode()
+	} else if err != nil {
+		exitCode = -1
+	}
+
+	pidPath := filepath.Join(p.Config.ServiceDir, ".cicdlog", "app.pid")
+
+	if exitCode != 0 {
+		// Non-zero exit = crash → restart with backoff
+		if _, ok := registry.Load(p.Config.ServiceDir); ok {
+			logger.Error(fmt.Sprintf("⚠️  Service '%s' crashed (exit code %d). Restarting with backoff...", p.Config.ServiceName, exitCode), p.Config)
+			restartWithBackoff(p)
+		}
+		return
+	}
+
+	// Exit 0 — wait for any daemonization forks to settle
+	time.Sleep(1 * time.Second)
+
+	// TIER 3: Check for PID file written by run.sh user
+	if pidData, err := os.ReadFile(pidPath); err == nil {
+		pidStr := strings.TrimSpace(string(pidData))
+		if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
+			// Verify it's not the bash PID we wrote ourselves
+			if pid != pgid && isProcessAlive(pid) {
+				p.Mode = RunModeDelegating
+				p.ExtPID = pid
+				registry.Store(p.Config.ServiceDir, p)
+				go watchSinglePID(p)
+				logger.Info(fmt.Sprintf("📌 Delegating mode: watching PID %d from $CICD_PID_FILE", pid), p.Config)
+				return
+			}
+		}
+	}
+
+	// TIER 2: Auto-detect background children still in our PGID
+	if pgid > 0 {
+		if children := getChildrenInGroup(pgid); len(children) > 0 {
+			p.Mode = RunModeBackground
+			p.ProcessGroup = pgid
+			// Write the first child PID for CLI status
+			writePIDFile(pidPath, children[0])
+			registry.Store(p.Config.ServiceDir, p)
+			go watchProcessGroup(p)
+			logger.Info(fmt.Sprintf("🔍 Background mode: auto-detected %d child(ren) in process group %d", len(children), pgid), p.Config)
+			return
+		}
+	}
+
+	// TIER 4 fallback: fully external, nothing to track
+	logger.Info("✅ run.sh exited 0 with no traceable children. Externally managed.", p.Config)
+	os.Remove(pidPath) // Clean up — no process to track
+	registry.Delete(p.Config.ServiceDir)
+}
+
+// watchSinglePID monitors an external process by PID (Tier 3)
+func watchSinglePID(p *ManagedProcess) {
+	for {
+		time.Sleep(30 * time.Second)
+
+		// Check if we were stopped intentionally
+		if _, ok := registry.Load(p.Config.ServiceDir); !ok {
+			return
+		}
+
+		// Reset restart count if stable
+		if time.Since(p.StartTime) > stableRunDuration && p.RestartCount > 0 {
+			p.RestartCount = 0
+		}
+
+		if !isProcessAlive(p.ExtPID) {
+			logger.Error(fmt.Sprintf("💀 External process PID %d died. Triggering restart...", p.ExtPID), p.Config)
+			registry.Delete(p.Config.ServiceDir)
+			restartWithBackoff(p)
+			return
+		}
 	}
 }
 
-// GetProcessStatus returns info for the dashboard
+// watchProcessGroup monitors all children in a PGID (Tier 2)
+func watchProcessGroup(p *ManagedProcess) {
+	for {
+		time.Sleep(30 * time.Second)
+
+		if _, ok := registry.Load(p.Config.ServiceDir); !ok {
+			return
+		}
+
+		// Reset restart count if stable
+		if time.Since(p.StartTime) > stableRunDuration && p.RestartCount > 0 {
+			p.RestartCount = 0
+		}
+
+		children := getChildrenInGroup(p.ProcessGroup)
+		if len(children) == 0 {
+			logger.Error("💀 All children in process group died. Triggering restart...", p.Config)
+			registry.Delete(p.Config.ServiceDir)
+			restartWithBackoff(p)
+			return
+		}
+	}
+}
+
+// restartWithBackoff restarts with exponential backoff (F7)
+func restartWithBackoff(p *ManagedProcess) {
+	p.RestartCount++
+
+	if p.RestartCount > maxRestarts {
+		logger.Error(fmt.Sprintf("🔥 Max restarts (%d) exceeded for %s. Giving up. Manual intervention required.", maxRestarts, p.Config.ServiceName), p.Config)
+		sendNotification(p.Config, fmt.Sprintf("🔥 CRITICAL: Service '%s' has exceeded max restarts (%d). Process permanently stopped.", p.Config.ServiceName, maxRestarts))
+		registry.Delete(p.Config.ServiceDir)
+		return
+	}
+
+	// Get backoff delay
+	idx := p.RestartCount - 1
+	if idx >= len(backoffSchedule) {
+		idx = len(backoffSchedule) - 1
+	}
+	delay := backoffSchedule[idx]
+
+	logger.Warn(fmt.Sprintf("⏱️  Restart %d/%d for %s. Waiting %v...", p.RestartCount, maxRestarts, p.Config.ServiceName, delay), p.Config)
+	time.Sleep(delay)
+
+	// Re-check if we were stopped during the backoff wait
+	if _, ok := registry.Load(p.Config.ServiceDir); !ok {
+		// Check if it was intentionally stopped during backoff
+		return
+	}
+
+	if err := StartAppProcess(p.Config); err != nil {
+		logger.Error(fmt.Sprintf("Failed to restart %s: %v", p.Config.ServiceName, err), p.Config)
+	}
+}
+
+// GetProcessStatus returns info for the daemon's in-memory API
 func GetProcessStatus(id string) (bool, int, string) {
 	if val, ok := registry.Load(id); ok {
 		proc := val.(*ManagedProcess)
-		uptime := time.Since(proc.StartTime).String()
-		return true, proc.Cmd.Process.Pid, uptime
+		uptime := formatUptime(time.Since(proc.StartTime))
+		switch proc.Mode {
+		case RunModeDelegating:
+			return true, proc.ExtPID, uptime
+		case RunModeBackground:
+			children := getChildrenInGroup(proc.ProcessGroup)
+			if len(children) > 0 {
+				return true, children[0], uptime
+			}
+		default:
+			if proc.Cmd != nil && proc.Cmd.Process != nil {
+				return true, proc.Cmd.Process.Pid, uptime
+			}
+		}
 	}
 	return false, 0, "Not Running"
+}
+
+// GetProcessStatusFromDisk checks the PID file on disk (B3 — for CLI use)
+func GetProcessStatusFromDisk(serviceDir string) (bool, int, string) {
+	pidPath := filepath.Join(serviceDir, ".cicdlog", "app.pid")
+	pid := readPIDFile(pidPath)
+	if pid <= 0 {
+		return false, 0, "Not Running"
+	}
+	if !isProcessAlive(pid) {
+		return false, 0, "Not Running (stale PID)"
+	}
+	return true, pid, "Running"
+}
+
+// GetRunMode returns the current run mode for a project
+func GetRunMode(serviceDir string) RunMode {
+	if val, ok := registry.Load(serviceDir); ok {
+		proc := val.(*ManagedProcess)
+		return proc.Mode
+	}
+	return RunModeInstallOnly
+}
+
+// ═══════════════════════════════════════════════════════
+//  Helpers
+// ═══════════════════════════════════════════════════════
+
+func writePIDFile(path string, pid int) {
+	os.WriteFile(path, []byte(strconv.Itoa(pid)), 0644)
+}
+
+func readPIDFile(path string) int {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0
+	}
+	return pid
+}
+
+func formatUptime(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	hours := int(d.Hours())
+	mins := int(d.Minutes()) % 60
+	if hours >= 24 {
+		days := hours / 24
+		hours = hours % 24
+		return fmt.Sprintf("%dd%dh%dm", days, hours, mins)
+	}
+	return fmt.Sprintf("%dh%dm", hours, mins)
 }

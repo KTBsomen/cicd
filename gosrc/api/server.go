@@ -13,6 +13,7 @@ import (
 	"gosrc/parser"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"bufio"
@@ -25,67 +26,102 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ktbsomen/jsjson"
+	gnet "github.com/shirou/gopsutil/v4/net"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 //go:embed dashboard.html
 var dashboardHTML []byte
 
-var jwtSecret = []byte("change-me-to-something-very-secure")
+// jwtSecret is loaded from DB or env at startup (IF-2)
+var jwtSecret []byte
 
 // StartUnifiedServer launches the single-port Gateway for Webhooks & Dashboard
 func StartUnifiedServer(cfg *parser.Config) {
+	// IF-2: Load JWT secret from DB or generate fresh
+	jwtSecret = database.GetJWTSecret()
+
 	app := fiber.New(fiber.Config{
-		BodyLimit: 2 * 1024 * 1024, // 2MB Limit
+		BodyLimit: 2 * 1024 * 1024,
 	})
 
-	// Security: Rate limiting for all public routes
 	app.Use(limiter.New(limiter.Config{
 		Max:        20,
 		Expiration: 1 * time.Minute,
 	}))
 
-	// Security: CORS
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"*"},
-		AllowMethods: []string{"GET", "POST"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
 	}))
 
-	// 0. HEALTH CHECK & LANDING PAGE
+	// 0. HEALTH CHECK
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set("Content-Type", "text/html")
 		return c.Send([]byte("🚀 CICD Unified Gateway is LIVE!\n\nAccess the Dashboard at: <a href='/dashboard'>/dashboard</a>"))
 	})
 
-	// --- 1. WEBHOOK ROUTE (Public, but HMAC Secured) ---
+	// --- 1. WEBHOOK ROUTE ---
 	app.Post("/", func(c fiber.Ctx) error {
 		if c.Get("X-Github-Event") == "ping" {
 			return c.SendString("Pong")
 		}
-
-		// Verify GitHub Signature
 		if err := verifySignature(c, cfg.WebhookSecret); err != nil {
 			logger.Warn("Unauthorized webhook: "+err.Error(), cfg)
 			return c.Status(401).SendString(err.Error())
 		}
-
-		// Parse Payload
 		data, err := parseAndValidateWebhook(c, cfg)
 		if err != nil {
 			return c.Status(200).SendString(err.Error())
 		}
 
-		// Notify MongoDB
-		go database.UpdateCommitHash(cfg, data.Hash)
-		logger.Info(fmt.Sprintf("🚀 WEBHOOK TRIGGERED: %s (Commit: %s)", cfg.ServiceName, data.Hash[:8]), cfg)
+		// F5: Check if project is pinned
+		project, _ := database.GetProjectByRepoURL(cfg.RepoURL)
+		if project != nil {
+			if project.IsPinned {
+				// Record commit but don't deploy
+				database.AddCommitToHistory(project.ID, data.Hash, "", "webhook")
+				logger.Info(fmt.Sprintf("📌 Project pinned. Commit %s recorded but NOT deployed.", data.Hash[:8]), cfg)
+				return c.SendString("Pinned — commit recorded")
+			}
+		}
 
+		// Use the deployment queue
+		actions.EnqueueDeployment(cfg, data.Hash, "", actions.FullDeployPipeline)
+		logger.Info(fmt.Sprintf("🚀 WEBHOOK TRIGGERED: %s (Commit: %s)", cfg.ServiceName, data.Hash[:8]), cfg)
 		return c.SendString("Deployment initiated")
 	})
 
-	// --- 2. DASHBOARD ROUTES (UI) ---
+	// --- 2. DASHBOARD & AUTH ---
 	app.Get("/dashboard", func(c fiber.Ctx) error {
-		logger.Info("🖥️  Dashboard requested (Internal Asset)", cfg)
 		c.Set("Content-Type", "text/html")
 		return c.Send(dashboardHTML)
+	})
+
+	// B1: Token-based login for first run
+	app.Post("/auth/token-login", func(c fiber.Ctx) error {
+		type request struct {
+			Token string `json:"token"`
+		}
+		var req request
+		if err := c.Bind().Body(&req); err != nil {
+			return c.Status(400).SendString("Invalid request")
+		}
+		valid, err := database.ValidateSetupToken(req.Token)
+		if !valid {
+			errMsg := "Invalid token"
+			if err != nil {
+				errMsg = err.Error()
+			}
+			return c.Status(401).JSON(fiber.Map{"error": errMsg})
+		}
+		// Generate JWT
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"role": "admin",
+			"exp":  time.Now().Add(24 * time.Hour).Unix(),
+		})
+		tokenString, _ := token.SignedString(jwtSecret)
+		return c.JSON(fiber.Map{"token": tokenString, "message": "Authenticated via setup token"})
 	})
 
 	app.Post("/auth/magic-link", func(c fiber.Ctx) error {
@@ -96,22 +132,17 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err := c.Bind().Body(&req); err != nil {
 			return c.Status(400).SendString("Invalid")
 		}
-
 		if req.Email != cfg.AdminEmail {
 			return c.Status(401).SendString("Unauthorized")
 		}
-
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"email": req.Email,
 			"exp":   time.Now().Add(time.Minute * 15).Unix(),
 		})
-
 		tokenString, _ := token.SignedString(jwtSecret)
-
 		magicLink := fmt.Sprintf("http://%s:%d/auth/verify?token=%s", cfg.PublicIP, cfg.Webhook, tokenString)
 		logger.SendMail(cfg, "Dashboard Login Link", magicLink)
 		logger.Info("📧 MAGIC LINK: "+magicLink, cfg)
-
 		return c.SendString("Sent")
 	})
 
@@ -121,7 +152,6 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err != nil || !token.Valid {
 			return c.Status(401).SendString("Invalid")
 		}
-
 		c.Set("Content-Type", "text/html")
 		return c.SendString(fmt.Sprintf(`<script>localStorage.setItem('cicd_token', '%s'); window.location.href='/dashboard';</script>`, tokenString))
 	})
@@ -137,31 +167,39 @@ func StartUnifiedServer(cfg *parser.Config) {
 		return c.JSON(ips)
 	})
 
+	// F14: Projects with resource stats
 	api.Get("/projects", func(c fiber.Ctx) error {
 		projects, err := database.GetAllProjects()
 		if err != nil {
 			return c.Status(500).SendString(err.Error())
 		}
 
-		// Enrich projects with real-time process status
 		type projectStatus struct {
 			database.Project
-			IsRunning bool
-			PID       int
-			Uptime    string
+			IsRunning  bool     `json:"is_running"`
+			PID        int      `json:"pid"`
+			Uptime     string   `json:"uptime"`
+			CPUPercent float64  `json:"cpu_percent"`
+			MemoryMB   float64  `json:"memory_mb"`
+			Ports      []uint32 `json:"ports"`
 		}
 
 		var enriched []projectStatus
 		for _, p := range projects {
 			isRunning, pid, uptime := actions.GetProcessStatus(p.ServiceDir)
-			enriched = append(enriched, projectStatus{
+			ps := projectStatus{
 				Project:   p,
 				IsRunning: isRunning,
 				PID:       pid,
 				Uptime:    uptime,
-			})
+			}
+			// F14: Get resource stats for running processes
+			if isRunning && pid > 0 {
+				ps.CPUPercent, ps.MemoryMB = getProcessStats(pid)
+				ps.Ports = getProcessListeningPorts(int32(pid))
+			}
+			enriched = append(enriched, ps)
 		}
-
 		return c.JSON(enriched)
 	})
 
@@ -185,17 +223,13 @@ func StartUnifiedServer(cfg *parser.Config) {
 			SudoPass      string `json:"sudo_pass"`
 			PublicIP      string `json:"public_ip"`
 		}
-
 		var req CreateRequest
 		if err := c.Bind().JSON(&req); err != nil {
 			return c.Status(400).SendString("Invalid request format")
 		}
-
-		// 1. Validation
 		if req.RepoURL == "" || req.ServiceName == "" || req.ServiceUser == "" {
 			return c.Status(400).SendString("Missing required fields: repo_url, service_name, service_user")
 		}
-
 		if req.Branch == "" {
 			req.Branch = "main"
 		}
@@ -203,12 +237,15 @@ func StartUnifiedServer(cfg *parser.Config) {
 			req.BaseDir = cfg.ServiceDir
 		}
 		if req.WebhookPort == 0 {
-			req.WebhookPort = 9641 // Default port for UI-created projects
+			req.WebhookPort = 9641
 		}
 
-		logger.Info(fmt.Sprintf("🚀 UI TRIGGER: Creating project %s...", req.ServiceName), cfg)
+		// EC-16: Port conflict check
+		existing, _ := database.CheckPortConflict(req.WebhookPort, 0)
+		if existing != "" {
+			return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("Port %d already in use by project '%s'", req.WebhookPort, existing)})
+		}
 
-		// 2. Resolve Secure Path
 		existingPaths, _ := database.GetAllDeploymentPaths()
 		res, err := deploypath.ResolveDeploymentPath(deploypath.Config{
 			ServiceUser:         req.ServiceUser,
@@ -220,15 +257,12 @@ func StartUnifiedServer(cfg *parser.Config) {
 			return c.Status(500).SendString("Path Resolution Failed: " + err.Error())
 		}
 
-		// 3. Create a temporary config for this project
-		projectCfg := *cfg // Clone global config
+		projectCfg := *cfg
 		projectCfg.RepoURL = req.RepoURL
 		projectCfg.Branch = req.Branch
 		projectCfg.ServiceName = req.ServiceName
 		projectCfg.ServiceUser = req.ServiceUser
 		projectCfg.ServiceDir = res.FinalPath
-
-		// Override with provided optional flags
 		if req.AdminEmail != "" {
 			projectCfg.AdminEmail = req.AdminEmail
 		}
@@ -238,49 +272,24 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if req.GitPassword != "" {
 			projectCfg.GitPassword = req.GitPassword
 		}
-		if req.WebhookSecret != "" {
-			projectCfg.WebhookSecret = req.WebhookSecret
-		}
-		if req.WebhookPort != 0 {
-			projectCfg.Webhook = req.WebhookPort
-		}
-		if req.MongoDBURI != "" {
-			projectCfg.MongoDBURI = req.MongoDBURI
-		}
 		if req.PublicIP != "" {
 			projectCfg.PublicIP = req.PublicIP
-		}
-		if req.SMTPHost != "" {
-			projectCfg.SMTPHost = req.SMTPHost
-		}
-		if req.SMTPPort != 0 {
-			projectCfg.SMTPPort = req.SMTPPort
-		}
-		if req.SMTPUser != "" {
-			projectCfg.SMTPUser = req.SMTPUser
-		}
-		if req.SMTPPass != "" {
-			projectCfg.SMTPPass = req.SMTPPass
 		}
 		if req.SudoPass != "" {
 			projectCfg.SudoPass = req.SudoPass
 		}
 
-		// 4. Setup Folder (Root operation)
 		if err := actions.SetupProjectFolder(&projectCfg); err != nil {
 			return c.Status(500).SendString("Folder Setup Failed: " + err.Error())
 		}
-
-		// 5. Register in DBs
 		database.RegisterProject(&projectCfg)
 		database.RegisterToMongo(&projectCfg)
 
-		// 6. Trigger Initial Deployment in background
-		go func() {
-			logger.Info(fmt.Sprintf("🎬 Initializing deployment for %s...", projectCfg.ServiceName), &projectCfg)
-			actions.SyncRepo(&projectCfg)
-			actions.RunDeployment(&projectCfg)
-		}()
+		// Use deployment queue
+		actions.EnqueueDeployment(&projectCfg, "", "", func(c *parser.Config, h, m string) {
+			actions.SyncRepo(c)
+			actions.RunDeployment(c)
+		})
 
 		return c.Status(201).JSON(fiber.Map{
 			"message":     "Project created and deployment started",
@@ -293,7 +302,6 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err != nil {
 			return c.Status(404).SendString("Not found")
 		}
-
 		data, err := os.ReadFile(filepath.Join(project.ServiceDir, ".cicdlog", "deploy.log"))
 		if err != nil {
 			return c.Status(404).SendString("No logs")
@@ -315,6 +323,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 			return c.Status(404).SendString("Not found")
 		}
 		actions.StopAppProcess(project.ServiceDir)
+		database.SetDeployStatus(c.Params("id"), "idle")
 		return c.SendString("Stopped")
 	})
 
@@ -323,12 +332,73 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err != nil {
 			return c.Status(404).SendString("Not found")
 		}
-		appCfg := project.ToConfig()
-		go func() {
-			actions.SyncRepo(appCfg)
-			actions.RunDeployment(appCfg)
-		}()
+		appCfg, err := project.ToConfig()
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+		actions.EnqueueDeployment(appCfg, "", "", func(cfg *parser.Config, h, m string) {
+			actions.SyncRepo(cfg)
+			actions.RunDeployment(cfg)
+		})
 		return c.SendString("Deployment Started")
+	})
+
+	// F2: Commit history
+	api.Get("/projects/:id/history", func(c fiber.Ctx) error {
+		id, _ := strconv.Atoi(c.Params("id"))
+		entries, err := database.GetCommitHistory(id, 50)
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+		return c.JSON(entries)
+	})
+
+	// F4: Rollback
+	api.Post("/projects/:id/rollback", func(c fiber.Ctx) error {
+		type req struct {
+			CommitHash string `json:"commit_hash"`
+		}
+		var r req
+		if err := c.Bind().Body(&r); err != nil || r.CommitHash == "" {
+			return c.Status(400).SendString("Missing commit_hash")
+		}
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil {
+			return c.Status(404).SendString("Not found")
+		}
+		appCfg, err := project.ToConfig()
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+		go actions.RollbackToCommit(appCfg, r.CommitHash)
+		return c.JSON(fiber.Map{"message": "Rollback initiated to " + r.CommitHash[:8]})
+	})
+
+	// F5: Pin/Unpin
+	api.Post("/projects/:id/pin", func(c fiber.Ctx) error {
+		return database.SetProjectPinned(c.Params("id"), true)
+	})
+	api.Post("/projects/:id/unpin", func(c fiber.Ctx) error {
+		return database.SetProjectPinned(c.Params("id"), false)
+	})
+
+	// F13: Force reinstall
+	api.Post("/projects/:id/reinstall", func(c fiber.Ctx) error {
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil {
+			return c.Status(404).SendString("Not found")
+		}
+		hashFile := filepath.Join(project.ServiceDir, ".cicdlog", "install.hash")
+		os.Remove(hashFile)
+		appCfg, err := project.ToConfig()
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+		actions.EnqueueDeployment(appCfg, "", "", func(cfg *parser.Config, h, m string) {
+			actions.SyncRepo(cfg)
+			actions.RunDeployment(cfg)
+		})
+		return c.JSON(fiber.Map{"message": "Force reinstall triggered"})
 	})
 
 	api.Post("/projects/:id/run", func(c fiber.Ctx) error {
@@ -339,37 +409,40 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err := c.Bind().Body(&req); err != nil {
 			return c.Status(400).SendString("Invalid request")
 		}
-
 		project, err := database.GetProjectByID(c.Params("id"))
 		if err != nil {
 			return c.Status(404).SendString("Not found")
 		}
-
-		output, err := actions.RunCustomCommand(project.ToConfig(), req.Command)
+		appCfg, err := project.ToConfig()
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+		output, err := actions.RunCustomCommand(appCfg, req.Command)
 		if err != nil {
 			return c.Status(500).SendString(fmt.Sprintf("Error: %v\nOutput: %s", err, output))
 		}
 		return c.SendString(output)
 	})
+
 	api.Delete("/projects/:id", func(c fiber.Ctx) error {
 		project, err := database.GetProjectByID(c.Params("id"))
 		if err != nil {
 			return c.Status(404).SendString("Not found")
 		}
-
-		// Stop process first
 		actions.StopAppProcess(project.ServiceDir)
-
-		// Delete from database
 		if err := database.DeleteProject(c.Params("id")); err != nil {
 			return c.Status(500).SendString(err.Error())
 		}
-
 		return c.SendString("Deleted")
 	})
 
-	// --- SSE REAL-TIME STREAMS ---
+	// F15: Server-wide open ports
+	api.Get("/server/ports", func(c fiber.Ctx) error {
+		ports := getServerListeningPorts()
+		return c.JSON(fiber.Map{"listening": ports})
+	})
 
+	// --- SSE REAL-TIME STREAMS ---
 	api.Get("/stream/fleet", func(c fiber.Ctx) error {
 		c.Set("Content-Type", "text/event-stream")
 		c.Set("Cache-Control", "no-cache")
@@ -380,26 +453,34 @@ func StartUnifiedServer(cfg *parser.Config) {
 				projects, _ := database.GetAllProjects()
 				type projectStatus struct {
 					database.Project
-					IsRunning bool
-					PID       int
-					Uptime    string
+					IsRunning  bool     `json:"is_running"`
+					PID        int      `json:"pid"`
+					Uptime     string   `json:"uptime"`
+					CPUPercent float64  `json:"cpu_percent"`
+					MemoryMB   float64  `json:"memory_mb"`
+					Ports      []uint32 `json:"ports"`
 				}
 				var enriched []projectStatus
 				for _, p := range projects {
 					isRunning, pid, uptime := actions.GetProcessStatus(p.ServiceDir)
-					enriched = append(enriched, projectStatus{
+					ps := projectStatus{
 						Project:   p,
 						IsRunning: isRunning,
 						PID:       pid,
 						Uptime:    uptime,
-					})
+					}
+					if isRunning && pid > 0 {
+						ps.CPUPercent, ps.MemoryMB = getProcessStats(pid)
+						ps.Ports = getProcessListeningPorts(int32(pid))
+					}
+					enriched = append(enriched, ps)
 				}
 				data, _ := json.Marshal(enriched)
 				fmt.Fprintf(w, "data: %s\n\n", data)
 				if err := w.Flush(); err != nil {
 					return
 				}
-				time.Sleep(2 * time.Second)
+				time.Sleep(3 * time.Second) // 3s instead of 2s to reduce CPU
 			}
 		})
 		return nil
@@ -410,19 +491,15 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err != nil {
 			return c.Status(404).SendString("Not found")
 		}
-
 		c.Set("Content-Type", "text/event-stream")
 		c.Set("Cache-Control", "no-cache")
 		c.Set("Connection", "keep-alive")
-		c.Set("X-Accel-Buffering", "no") // Disable Nginx buffering
+		c.Set("X-Accel-Buffering", "no")
 
 		logPath := filepath.Join(project.ServiceDir, ".cicdlog", "deploy.log")
-
 		c.Response().SetBodyStreamWriter(func(w *bufio.Writer) {
-			// 1. Send an initial "Connected" message so the browser knows it's alive
 			fmt.Fprintf(w, ": heartbeat\n\n")
 			w.Flush()
-
 			file, err := os.Open(logPath)
 			if err != nil {
 				fmt.Fprintf(w, "data: ❌ Failed to open log file: %v\n\n", err)
@@ -430,38 +507,28 @@ func StartUnifiedServer(cfg *parser.Config) {
 				return
 			}
 			defer file.Close()
-
-			// 2. Read the LAST 20 lines for immediate context
-			// (Simplistic approach: seek back a bit and find lines)
 			stat, _ := file.Stat()
-			offset := int64(2048) // Look back 2KB
+			offset := int64(2048)
 			if stat.Size() < offset {
 				offset = 0
 			} else {
 				offset = stat.Size() - offset
 			}
 			file.Seek(offset, io.SeekStart)
-
-			// Skip first partial line
 			scanner := bufio.NewScanner(file)
 			if offset > 0 {
 				scanner.Scan()
 			}
-
 			for scanner.Scan() {
 				fmt.Fprintf(w, "data: %s\n\n", scanner.Text())
 			}
 			w.Flush()
-
-			// 3. Continue tailing for NEW lines
 			reader := bufio.NewReader(file)
 			lastHeartbeat := time.Now()
-
 			for {
 				line, err := reader.ReadString('\n')
 				if err != nil {
 					if err == io.EOF {
-						// Send heartbeat every 15s to keep connection alive
 						if time.Since(lastHeartbeat) > 15*time.Second {
 							fmt.Fprintf(w, ": heartbeat\n\n")
 							w.Flush()
@@ -472,7 +539,6 @@ func StartUnifiedServer(cfg *parser.Config) {
 					}
 					return
 				}
-
 				fmt.Fprintf(w, "data: %s\n\n", strings.TrimSpace(line))
 				if err := w.Flush(); err != nil {
 					return
@@ -484,44 +550,47 @@ func StartUnifiedServer(cfg *parser.Config) {
 	})
 
 	// --- GLOBAL SETTINGS API ---
-
-	// GET current global settings
 	api.Get("/settings", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"mongodb_uri":    cfg.MongoDBURI,
 			"admin_email":    cfg.AdminEmail,
+			"webhook_port":   cfg.Webhook,
 			"webhook_secret": cfg.WebhookSecret,
 			"smtp_host":      cfg.SMTPHost,
 			"smtp_port":      cfg.SMTPPort,
 			"smtp_user":      cfg.SMTPUser,
 			"public_ip":      cfg.PublicIP,
+			"notify_url":     cfg.NotifyURL,
+			"deploy_timeout": cfg.DeployTimeout,
 		})
 	})
 
-	// UPDATE global settings and restart
 	api.Put("/settings", func(c fiber.Ctx) error {
 		type SettingsRequest struct {
 			MongoDBURI    string `json:"mongodb_uri"`
 			AdminEmail    string `json:"admin_email"`
+			WebhookPort   int    `json:"webhook_port"`
 			WebhookSecret string `json:"webhook_secret"`
 			SMTPHost      string `json:"smtp_host"`
 			SMTPPort      int    `json:"smtp_port"`
 			SMTPUser      string `json:"smtp_user"`
 			SMTPPass      string `json:"smtp_pass"`
 			PublicIP      string `json:"public_ip"`
+			NotifyURL     string `json:"notify_url"`
+			DeployTimeout int    `json:"deploy_timeout"`
 		}
-
 		var req SettingsRequest
 		if err := c.Bind().JSON(&req); err != nil {
 			return c.Status(400).SendString("Invalid format")
 		}
-
-		// Update the in-memory config
 		if req.MongoDBURI != "" {
 			cfg.MongoDBURI = req.MongoDBURI
 		}
 		if req.AdminEmail != "" {
 			cfg.AdminEmail = req.AdminEmail
+		}
+		if req.WebhookPort != 0 {
+			cfg.Webhook = req.WebhookPort
 		}
 		if req.WebhookSecret != "" {
 			cfg.WebhookSecret = req.WebhookSecret
@@ -541,41 +610,38 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if req.PublicIP != "" {
 			cfg.PublicIP = req.PublicIP
 		}
-
-		// Save to SQLite
+		if req.NotifyURL != "" {
+			cfg.NotifyURL = req.NotifyURL
+		}
+		if req.DeployTimeout != 0 {
+			cfg.DeployTimeout = req.DeployTimeout
+		}
 		database.SaveGlobalSettings(cfg)
-
-		logger.Info("⚙️  Global settings updated via UI. Restarting orchestrator to apply changes...", cfg)
-
-		// Trigger restart after a small delay
+		logger.Info("⚙️  Global settings updated via UI", cfg)
 		go func() {
 			time.Sleep(1 * time.Second)
-			logger.Info("🛑 Shutting down for systemd restart...", cfg)
 			os.Exit(0)
 		}()
-
-		return c.JSON(fiber.Map{
-			"message": "Settings saved. Orchestrator is restarting...",
-		})
+		return c.JSON(fiber.Map{"message": "Settings saved. Orchestrator is restarting..."})
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Webhook)
 	logger.Info(fmt.Sprintf("🛰️  Unified Gateway starting on %s", addr), cfg)
 	if err := app.Listen(addr); err != nil {
 		logger.Error(fmt.Sprintf("❌ CRITICAL: Failed to start API Gateway: %v", err), cfg)
-		// We panic here because the Gateway is essential for Control Plane access
-		panic(fmt.Sprintf("PORT %d IS ALREADY IN USE! Check if an old version is running.", cfg.Webhook))
+		panic(fmt.Sprintf("PORT %d IS ALREADY IN USE!", cfg.Webhook))
 	}
 }
 
-// --- HELPERS ---
+// ═══════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════
 
 func authMiddleware(c fiber.Ctx) error {
 	tokenString := c.Get("Authorization")
 	if tokenString == "" {
 		tokenString = c.Query("token")
 	}
-
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) { return jwtSecret, nil })
 	if err != nil || !token.Valid {
 		return c.Status(401).SendString("Invalid token")
@@ -623,4 +689,50 @@ func parseAndValidateWebhook(c fiber.Ctx, cfg *parser.Config) (*WebhookData, err
 		return nil, fmt.Errorf("no hash")
 	}
 	return data, nil
+}
+
+// F14: Get CPU% and Memory for a process
+func getProcessStats(pid int) (cpuPct float64, memMB float64) {
+	p, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return 0, 0
+	}
+	cpu, _ := p.CPUPercent()
+	mem, _ := p.MemoryInfo()
+	if mem != nil {
+		memMB = float64(mem.RSS) / 1024 / 1024
+	}
+	return cpu, memMB
+}
+
+// F15: Get listening ports for a specific PID
+func getProcessListeningPorts(pid int32) []uint32 {
+	conns, err := gnet.Connections("tcp")
+	if err != nil {
+		return nil
+	}
+	var ports []uint32
+	for _, c := range conns {
+		if c.Status == "LISTEN" && c.Pid == pid {
+			ports = append(ports, c.Laddr.Port)
+		}
+	}
+	return ports
+}
+
+// F15: Get all listening ports server-wide
+func getServerListeningPorts() []uint32 {
+	conns, err := gnet.Connections("tcp")
+	if err != nil {
+		return nil
+	}
+	seen := make(map[uint32]bool)
+	var ports []uint32
+	for _, c := range conns {
+		if c.Status == "LISTEN" && !seen[c.Laddr.Port] {
+			seen[c.Laddr.Port] = true
+			ports = append(ports, c.Laddr.Port)
+		}
+	}
+	return ports
 }

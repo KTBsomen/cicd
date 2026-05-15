@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gosrc/parser"
 	"net/smtp"
+	"strings"
 	"time"
 )
 
@@ -18,7 +19,7 @@ func SendErrorEmail(cfg *parser.Config, subject string, err string, step string)
 	body.WriteString(fmt.Sprintf("Error details: %s\r\n", err))
 
 	addr := fmt.Sprintf("%s:%d", cfg.SMTPHost, cfg.SMTPPort)
-	auth := smtp.PlainAuth("", cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPHost)
+	auth := smtp.PlainAuth("", cfg.SMTPUser, strings.ReplaceAll(strings.ReplaceAll(cfg.SMTPPass, "\r\n", ""), " ", ""), cfg.SMTPHost)
 
 	return smtp.SendMail(addr, auth, cfg.SMTPUser, []string{cfg.AdminEmail}, body.Bytes())
 }
@@ -30,7 +31,7 @@ func SendMail(cfg *parser.Config, subject string, message string) error {
 	body.WriteString(message)
 
 	addr := fmt.Sprintf("%s:%d", cfg.SMTPHost, cfg.SMTPPort)
-	auth := smtp.PlainAuth("", cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPHost)
+	auth := smtp.PlainAuth("", cfg.SMTPUser, strings.ReplaceAll(strings.ReplaceAll(cfg.SMTPPass, "\r\n", ""), " ", ""), cfg.SMTPHost)
 
 	return smtp.SendMail(addr, auth, cfg.SMTPUser, []string{cfg.AdminEmail}, body.Bytes())
 }

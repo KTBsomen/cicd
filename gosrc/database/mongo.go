@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"gosrc/logger"
@@ -13,30 +14,80 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var mongoClient *mongo.Client
+// ═══════════════════════════════════════════════════════
+//  MongoDB Connection Pooling (IF-1)
+//  All functions share a single *mongo.Client via sync.Once
+// ═══════════════════════════════════════════════════════
 
-func InitMongo(ctx context.Context) error {
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
-	client, err := mongo.Connect(ctx, clientOptions)
-	if err != nil {
-		return fmt.Errorf("failed to connect to MongoDB: %w", err)
+var (
+	sharedMongoClient *mongo.Client
+	mongoOnce         sync.Once
+	mongoInitErr      error
+	mongoMu           sync.Mutex
+	lastMongoURI      string
+)
+
+// getMongoClient returns a shared MongoDB client. Thread-safe via sync.Once.
+// If the URI changes (e.g., user updates settings), reconnects.
+func getMongoClient(uri string) (*mongo.Client, error) {
+	mongoMu.Lock()
+	defer mongoMu.Unlock()
+
+	// If URI changed, disconnect old client and reconnect
+	if sharedMongoClient != nil && lastMongoURI != uri {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		sharedMongoClient.Disconnect(ctx)
+		sharedMongoClient = nil
+		mongoOnce = sync.Once{} // Reset once so it re-runs
 	}
-	mongoClient = client
-	return nil
+
+	mongoOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		clientOpts := options.Client().ApplyURI(uri).
+			SetMaxPoolSize(10).
+			SetMinPoolSize(1).
+			SetMaxConnIdleTime(5 * time.Minute)
+
+		client, err := mongo.Connect(ctx, clientOpts)
+		if err != nil {
+			mongoInitErr = fmt.Errorf("failed to connect to MongoDB: %w", err)
+			return
+		}
+
+		// Verify connection
+		if err := client.Ping(ctx, nil); err != nil {
+			mongoInitErr = fmt.Errorf("MongoDB ping failed: %w", err)
+			client.Disconnect(ctx)
+			return
+		}
+
+		sharedMongoClient = client
+		lastMongoURI = uri
+		mongoInitErr = nil
+	})
+
+	return sharedMongoClient, mongoInitErr
 }
 
 // RegisterToMongo syncs the local configuration to your centralized MongoDB
 func RegisterToMongo(cfg *parser.Config) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoDBURI))
+	if cfg.MongoDBURI == "" {
+		return nil // MongoDB not configured, skip silently
+	}
+
+	client, err := getMongoClient(cfg.MongoDBURI)
 	if err != nil {
-		logger.Error("Failed to connect to MongoDB", cfg)
+		logger.Error("Failed to connect to MongoDB: "+err.Error(), cfg)
 		return err
 	}
-	defer client.Disconnect(ctx)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	collection := client.Database("cicd").Collection("projects")
-	// Filter by Repo + Branch + PublicIP to identify this specific server/project
 	filter := bson.M{
 		"repo_url": cfg.RepoURL,
 		"branch":   cfg.Branch,
@@ -57,23 +108,28 @@ func RegisterToMongo(cfg *parser.Config) error {
 	opts := options.Update().SetUpsert(true)
 	_, err = collection.UpdateOne(ctx, filter, update, opts)
 	if err != nil {
-		logger.Error("Failed to update MongoDB record", cfg)
+		logger.Error("Failed to update MongoDB record: "+err.Error(), cfg)
 		return err
 	}
 	logger.Info("☁️  Centralized config synced to MongoDB", cfg)
 	return nil
 }
+
 func UpdateCommitHash(cfg *parser.Config, commitHash string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoDBURI))
+	if cfg.MongoDBURI == "" {
+		return nil
+	}
+
+	client, err := getMongoClient(cfg.MongoDBURI)
 	if err != nil {
-		logger.Error("Failed to connect to MongoDB", cfg)
+		logger.Error("Failed to connect to MongoDB: "+err.Error(), cfg)
 		return err
 	}
-	defer client.Disconnect(ctx)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	collection := client.Database("cicd").Collection("projects")
-	// Filter by Repo + Branch + PublicIP to identify this specific server/project
 	filter := bson.M{
 		"repo_url": cfg.RepoURL,
 		"branch":   cfg.Branch,
@@ -90,20 +146,27 @@ func UpdateCommitHash(cfg *parser.Config, commitHash string) error {
 	opts := options.Update().SetUpsert(true)
 	_, err = collection.UpdateOne(ctx, filter, update, opts)
 	if err != nil {
-		logger.Error("Failed to update MongoDB record", cfg)
+		logger.Error("Failed to update MongoDB record: "+err.Error(), cfg)
 		return err
 	}
-	logger.Info("☁️  Centralized config synced to MongoDB", cfg)
+	logger.Info("☁️  Commit hash synced to MongoDB", cfg)
 	return nil
 }
 
-// WatchChanges sits in a background loop and waits for Dashboard updates
+// WatchChanges sits in a background loop and waits for Dashboard updates.
+// IF-5: Uses safe type assertions with comma-ok idiom.
 func WatchChanges(cfg *parser.Config, callback func(*parser.Config)) {
-	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoDBURI))
-	if err != nil {
+	if cfg.MongoDBURI == "" {
 		return
 	}
+
+	client, err := getMongoClient(cfg.MongoDBURI)
+	if err != nil {
+		logger.Error("Failed to connect to MongoDB for watch: "+err.Error(), cfg)
+		return
+	}
+
+	ctx := context.Background()
 	collection := client.Database("cicd").Collection("projects")
 
 	// We only want to watch changes for THIS server
@@ -113,7 +176,7 @@ func WatchChanges(cfg *parser.Config, callback func(*parser.Config)) {
 	opts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
 	stream, err := collection.Watch(ctx, pipeline, opts)
 	if err != nil {
-		logger.Error("Failed to start MongoDB Watch Stream", cfg)
+		logger.Error("Failed to start MongoDB Watch Stream: "+err.Error(), cfg)
 		return
 	}
 	defer stream.Close(ctx)
@@ -121,34 +184,51 @@ func WatchChanges(cfg *parser.Config, callback func(*parser.Config)) {
 	for stream.Next(ctx) {
 		var event bson.M
 		if err := stream.Decode(&event); err == nil {
-			fmt.Println("changes detected raw event:", event)
-			// Extract the project name and notify the orchestrator
-			fullDoc := event["fullDocument"].(bson.M)
-			projectName := fullDoc["service_name"].(string)
-			repoURL := fullDoc["repo_url"].(string)
+			// IF-5: Safe type assertions — skip if types don't match
+			fullDoc, ok := event["fullDocument"].(bson.M)
+			if !ok {
+				continue
+			}
+			projectName, ok := fullDoc["service_name"].(string)
+			if !ok {
+				continue
+			}
+			repoURL, ok := fullDoc["repo_url"].(string)
+			if !ok {
+				continue
+			}
 			project, err := GetProjectByRepoURL(repoURL)
 			if err != nil {
-				return
+				logger.Error("Project not found for repo: "+repoURL, cfg)
+				continue
 			}
-			logger.Info("🔔 Remote change detected for: "+projectName, project.ToConfig())
-			callback(project.ToConfig()) // This will trigger our internal "TriggerUpdate"
+			appCfg, err := project.ToConfig()
+			if err != nil {
+				logger.Error("Failed to convert project to config: "+err.Error(), cfg)
+				continue
+			}
+			logger.Info("🔔 Remote change detected for: "+projectName, appCfg)
+			callback(appCfg)
 		}
 	}
 }
 
 // GetUniqueServerIPs retrieves all unique public_ips from the centralized registry
 func GetUniqueServerIPs(cfg *parser.Config) ([]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoDBURI))
+	if cfg.MongoDBURI == "" {
+		return nil, nil
+	}
+
+	client, err := getMongoClient(cfg.MongoDBURI)
 	if err != nil {
-		logger.Error("Failed to connect to MongoDB", cfg)
 		return nil, err
 	}
-	defer client.Disconnect(ctx)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 	collection := client.Database("cicd").Collection("projects")
-	values, err := collection.Distinct(context.Background(), "public_ips", bson.M{})
+	values, err := collection.Distinct(ctx, "public_ips", bson.M{})
 	if err != nil {
 		return nil, err
 	}

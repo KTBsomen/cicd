@@ -15,6 +15,11 @@ var (
 	mu        sync.Mutex
 )
 
+const (
+	maxLogSize     = 50 * 1024 * 1024 // 50MB
+	maxLogRotation = 5                // Keep 5 rotated files
+)
+
 // InitLogger sets up the global system log directory and file
 func InitLogger() {
 	once.Do(func() {
@@ -81,4 +86,31 @@ func Info(msg string, cfg *parser.Config)  { emit("INFO", colorInfo, msg, cfg) }
 func Warn(msg string, cfg *parser.Config)  { emit("WARN", colorWarn, msg, cfg) }
 func Error(msg string, cfg *parser.Config) { emit("ERROR", colorError, msg, cfg) }
 
-// SendErrorEmail is a placeholder for your alert system
+// RotateLogIfNeeded checks if a log file exceeds maxLogSize and rotates it.
+// Rotation: .log.4 deleted, .3→.4, .2→.3, .1→.2, .log→.1, new empty .log
+func RotateLogIfNeeded(logPath string) {
+	info, err := os.Stat(logPath)
+	if err != nil || info.Size() < maxLogSize {
+		return
+	}
+
+	// Rotate: delete oldest, shift others
+	for i := maxLogRotation; i >= 1; i-- {
+		src := fmt.Sprintf("%s.%d", logPath, i)
+		if i == maxLogRotation {
+			os.Remove(src) // Delete the oldest
+			continue
+		}
+		dst := fmt.Sprintf("%s.%d", logPath, i+1)
+		os.Rename(src, dst) // Shift: .3→.4, .2→.3, .1→.2
+	}
+
+	// Move current log to .1
+	os.Rename(logPath, logPath+".1")
+
+	// Create fresh empty log
+	f, err := os.Create(logPath)
+	if err == nil {
+		f.Close()
+	}
+}

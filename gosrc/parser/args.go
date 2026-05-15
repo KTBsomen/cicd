@@ -50,7 +50,17 @@ type Config struct {
 
 	// Network
 	PublicIP string
+
+	// Notifications
+	NotifyURL string
+
+	// Deployment
+	DeployTimeout int // seconds, default 1800 (30 min)
 }
+
+// ExplicitFlags tracks which flags were explicitly provided on the command line.
+// Used by LoadGlobalSettings to decide: "only override from SQLite if user didn't pass this flag."
+var ExplicitFlags = map[string]bool{}
 
 // MustCompile is preferred for global variables; it panics if the regex is invalid
 var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
@@ -131,6 +141,8 @@ func (c *Config) Parse() {
 			{"--smtp-user", "Username for SMTP authentication", "alerts@domain.com"},
 			{"--smtp-pass", "Password for SMTP authentication", "********"},
 			{"--public-ip", "Manual Public IP (Auto-detected if empty)", "1.2.3.4"},
+			{"--notify-url", "Slack/Discord webhook for failure alerts", "https://hooks.slack.com/..."},
+			{"--deploy-timeout", "Max seconds for install.sh execution", "1800"},
 		}, text.FgHiYellow)
 
 		// --- SECTION 5: EXAMPLES ---
@@ -148,12 +160,12 @@ func (c *Config) Parse() {
 	flag.StringVar(&c.RepoURL, "repo-url", "", "Repository URL for the code")
 	flag.StringVar(&c.Branch, "branch", "main", "Branch for the code")
 	flag.StringVar(&c.AdminEmail, "admin-email", "", "Admin email to send error logs")
-	flag.StringVar(&c.MongoDBURI, "mongodb-uri", "mongodb+srv://somenemulator_db_user:8Tc34iEW5KD54yD6@cicd.vlqm19g.mongodb.net/?appName=cicd", "MongoDB URI for change monitoring")
+	flag.StringVar(&c.MongoDBURI, "mongodb-uri", "", "MongoDB URI for change monitoring")
 	flag.StringVar(&c.GitUsername, "git-username", "", "Git username for private repos")
 	flag.StringVar(&c.GitPassword, "git-password", "", "Git password/token for private repos")
-	flag.StringVar(&c.SMTPHost, "smtp-host", "smtp.gmail.com", "SMTP host")
+	flag.StringVar(&c.SMTPHost, "smtp-host", "", "SMTP host")
 	flag.IntVar(&c.SMTPPort, "smtp-port", 587, "SMTP port")
-	flag.StringVar(&c.SMTPUser, "smtp-user", "test@gmail.com", "SMTP username")
+	flag.StringVar(&c.SMTPUser, "smtp-user", "", "SMTP username")
 	flag.StringVar(&c.SMTPPass, "smtp-pass", "", "SMTP password")
 	flag.StringVar(&c.User, "user", "", "Username of the code runner")
 	flag.StringVar(&c.SudoPass, "sudo-pass", "", "Sudo password for package installation")
@@ -164,10 +176,17 @@ func (c *Config) Parse() {
 	flag.IntVar(&c.Webhook, "webhook", 9641, "Port number for webhook listener")
 	flag.StringVar(&c.WebhookSecret, "webhook-secret", "", "GitHub Webhook secret")
 	flag.StringVar(&c.PublicIP, "public-ip", "", "Public IP for management")
+	flag.StringVar(&c.NotifyURL, "notify-url", "", "Slack/Discord webhook URL for failure alerts")
+	flag.IntVar(&c.DeployTimeout, "deploy-timeout", 1800, "Max seconds for install.sh (default 30 min)")
 
 	flag.Parse()
 
-	// 3. Run Visual Validation
+	// 3. Build the ExplicitFlags set AFTER Parse() — flag.Visit only visits explicitly-set flags
+	flag.Visit(func(f *flag.Flag) {
+		ExplicitFlags[f.Name] = true
+	})
+
+	// 4. Run Visual Validation
 	c.validateRequirements()
 
 	if c.PublicIP == "" {
@@ -209,7 +228,7 @@ func (c *Config) validateRequirements() {
 	}
 
 	var missing []string
-	if c.MongoDBURI == "" || strings.Contains(c.MongoDBURI, "default-url") {
+	if c.MongoDBURI == "" {
 		missing = append(missing, "--mongodb-uri")
 	}
 	if c.AdminEmail == "" {

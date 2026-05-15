@@ -5,11 +5,12 @@ import (
 	"gosrc/actions"
 	"gosrc/database"
 	"gosrc/parser"
-
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
@@ -57,11 +58,298 @@ func HandleCommands(cfg *parser.Config) {
 	case "log", "logs":
 		handleLogs(cfg)
 		os.Exit(0)
+
+	case "token":
+		handleToken(cfg)
+		os.Exit(0)
+
+	case "pin":
+		handlePin(cfg, true)
+		os.Exit(0)
+
+	case "unpin":
+		handlePin(cfg, false)
+		os.Exit(0)
+
+	case "rollback":
+		handleRollback(cfg)
+		os.Exit(0)
+
+	case "history":
+		handleHistory(cfg)
+		os.Exit(0)
+
+	case "reinstall":
+		handleReinstall(cfg)
+		os.Exit(0)
+
+	case "doctor":
+		handleDoctor(cfg)
+		os.Exit(0)
 	}
 }
 
+// ═══════════════════════════════════════════════════════
+//  cicd token [--force]
+// ═══════════════════════════════════════════════════════
+
+func handleToken(cfg *parser.Config) {
+	database.InitDB(cfg)
+	database.LoadGlobalSettings(cfg)
+
+	force := len(os.Args) > 2 && (os.Args[2] == "--force" || os.Args[2] == "-f")
+
+	if cfg.AdminEmail != "" && !force {
+		fmt.Println(text.FgHiCyan.Sprint("ℹ️  Admin email is configured: ") + text.Bold.Sprint(cfg.AdminEmail))
+		fmt.Println(text.Faint.Sprint("Use magic link to log in. Run 'cicd token --force' for emergency bypass."))
+		return
+	}
+
+	token, err := database.GenerateSetupToken()
+	if err != nil {
+		fmt.Printf("❌ Failed to generate token: %v\n", err)
+		return
+	}
+
+	fmt.Println(text.FgHiGreen.Sprint("\n🔑 SETUP TOKEN GENERATED"))
+	fmt.Println(text.Bold.Sprint("  Token: ") + text.FgHiYellow.Sprint(token))
+	fmt.Println(text.Faint.Sprint("  Expires in 15 minutes. One-time use."))
+	fmt.Println(text.Faint.Sprint("  Paste this token in the dashboard login screen.\n"))
+}
+
+// ═══════════════════════════════════════════════════════
+//  cicd pin / unpin <name|id>
+// ═══════════════════════════════════════════════════════
+
+func handlePin(cfg *parser.Config, pin bool) {
+	if len(os.Args) < 3 {
+		action := "pin"
+		if !pin {
+			action = "unpin"
+		}
+		fmt.Printf("Usage: cicd %s <name|id>\n", action)
+		return
+	}
+	database.InitDB(cfg)
+	project := resolveProject(os.Args[2])
+	if project == nil {
+		return
+	}
+
+	if err := database.SetProjectPinned(fmt.Sprintf("%d", project.ID), pin); err != nil {
+		fmt.Printf("❌ Failed: %v\n", err)
+		return
+	}
+	if pin {
+		fmt.Printf("📌 Project '%s' is now PINNED. Webhooks will record commits but NOT deploy.\n", project.ServiceName)
+	} else {
+		fmt.Printf("📌 Project '%s' is now UNPINNED. Normal deployments will resume.\n", project.ServiceName)
+	}
+}
+
+// ═══════════════════════════════════════════════════════
+//  cicd rollback <name|id> <hash>
+// ═══════════════════════════════════════════════════════
+
+func handleRollback(cfg *parser.Config) {
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: cicd rollback <name|id> <commit-hash>")
+		return
+	}
+	database.InitDB(cfg)
+	project := resolveProject(os.Args[2])
+	if project == nil {
+		return
+	}
+	commitHash := os.Args[3]
+
+	appCfg, err := project.ToConfig()
+	if err != nil {
+		fmt.Printf("❌ Config error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("⏪ Rolling back '%s' to commit %s...\n", project.ServiceName, commitHash[:8])
+	if err := actions.RollbackToCommit(appCfg, commitHash); err != nil {
+		fmt.Printf("❌ Rollback failed: %v\n", err)
+		return
+	}
+	fmt.Println("✅ Rollback complete")
+}
+
+// ═══════════════════════════════════════════════════════
+//  cicd history <name|id>
+// ═══════════════════════════════════════════════════════
+
+func handleHistory(cfg *parser.Config) {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: cicd history <name|id>")
+		return
+	}
+	database.InitDB(cfg)
+	project := resolveProject(os.Args[2])
+	if project == nil {
+		return
+	}
+
+	entries, err := database.GetCommitHistory(project.ID, 25)
+	if err != nil || len(entries) == 0 {
+		fmt.Println("No commit history found.")
+		return
+	}
+
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"#", "Commit", "Message", "Status", "Triggered", "Time"})
+
+	for _, e := range entries {
+		statusColor := text.FgHiBlack
+		switch e.Status {
+		case "current":
+			statusColor = text.FgHiGreen
+		case "rolled_back":
+			statusColor = text.FgHiRed
+		}
+		hash := e.CommitHash
+		if len(hash) > 8 {
+			hash = hash[:8]
+		}
+		msg := e.CommitMsg
+		if len(msg) > 40 {
+			msg = msg[:40] + "..."
+		}
+		t.AppendRow(table.Row{
+			e.ID,
+			hash,
+			msg,
+			statusColor.Sprint(strings.ToUpper(e.Status)),
+			e.TriggeredBy,
+			e.StartedAt.Format("Jan 02 15:04"),
+		})
+	}
+
+	style := table.StyleRounded
+	style.Color.Header = text.Colors{text.FgHiCyan, text.Bold}
+	style.Color.Border = text.Colors{text.FgHiBlack}
+	t.SetStyle(style)
+	t.Render()
+}
+
+// ═══════════════════════════════════════════════════════
+//  cicd reinstall <name|id>
+// ═══════════════════════════════════════════════════════
+
+func handleReinstall(cfg *parser.Config) {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: cicd reinstall <name|id>")
+		return
+	}
+	database.InitDB(cfg)
+	project := resolveProject(os.Args[2])
+	if project == nil {
+		return
+	}
+
+	hashFile := filepath.Join(project.ServiceDir, ".cicdlog", "install.hash")
+	os.Remove(hashFile)
+	fmt.Printf("🗑️  Deleted install.hash for '%s'. Next deployment will force reinstall.\n", project.ServiceName)
+	fmt.Println(text.Faint.Sprint("Trigger a deployment via webhook or 'cicd deploy' to apply."))
+}
+
+// ═══════════════════════════════════════════════════════
+//  cicd doctor — System health checks
+// ═══════════════════════════════════════════════════════
+
+func handleDoctor(cfg *parser.Config) {
+	fmt.Println(text.FgHiCyan.Sprint("\n🩺 CICD DOCTOR — System Health Check\n"))
+	passed := 0
+	total := 0
+
+	check := func(name string, fn func() error) {
+		total++
+		if err := fn(); err != nil {
+			fmt.Printf("  %s %s: %s\n", text.FgHiRed.Sprint("✗"), name, err)
+		} else {
+			passed++
+			fmt.Printf("  %s %s\n", text.FgHiGreen.Sprint("✓"), name)
+		}
+	}
+
+	check("Git binary present", func() error {
+		_, err := exec.LookPath("git")
+		return err
+	})
+
+	check("SQLite database accessible", func() error {
+		database.InitDB(cfg)
+		return database.DB.Ping()
+	})
+
+	check("MongoDB reachable", func() error {
+		database.LoadGlobalSettings(cfg)
+		if cfg.MongoDBURI == "" {
+			return fmt.Errorf("not configured")
+		}
+		conn, err := net.DialTimeout("tcp", "localhost:27017", 5*time.Second)
+		if err != nil {
+			return err
+		}
+		conn.Close()
+		return nil
+	})
+
+	database.InitDB(cfg)
+	projects, _ := database.GetAllProjects()
+
+	check(fmt.Sprintf("All project dirs exist (%d projects)", len(projects)), func() error {
+		var missing []string
+		for _, p := range projects {
+			if _, err := os.Stat(p.ServiceDir); os.IsNotExist(err) {
+				missing = append(missing, p.ServiceName)
+			}
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("missing dirs: %s", strings.Join(missing, ", "))
+		}
+		return nil
+	})
+
+	check("All PIDs alive", func() error {
+		var dead []string
+		for _, p := range projects {
+			isRunning, _, _ := actions.GetProcessStatusFromDisk(p.ServiceDir)
+			pidPath := filepath.Join(p.ServiceDir, ".cicdlog", "app.pid")
+			if _, err := os.Stat(pidPath); err == nil && !isRunning {
+				dead = append(dead, p.ServiceName)
+			}
+		}
+		if len(dead) > 0 {
+			return fmt.Errorf("stale PIDs: %s", strings.Join(dead, ", "))
+		}
+		return nil
+	})
+
+	check("SMTP reachable", func() error {
+		database.LoadGlobalSettings(cfg)
+		if cfg.SMTPHost == "" {
+			return fmt.Errorf("not configured")
+		}
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", cfg.SMTPHost, cfg.SMTPPort), 5*time.Second)
+		if err != nil {
+			return err
+		}
+		conn.Close()
+		return nil
+	})
+
+	fmt.Printf("\n  %s %d/%d checks passed\n\n", text.FgHiCyan.Sprint("Result:"), passed, total)
+}
+
+// ═══════════════════════════════════════════════════════
+//  Existing handlers
+// ═══════════════════════════════════════════════════════
+
 func handleLogs(cfg *parser.Config) {
-	// 1. If no args or just "-f", show system logs
 	if len(os.Args) == 2 {
 		runCommand("journalctl", "-u", "cicd", "-n", "100")
 		return
@@ -74,17 +362,10 @@ func handleLogs(cfg *parser.Config) {
 		return
 	}
 
-	// 2. If an ID or ServiceName is provided, find the project logs
 	database.InitDB(cfg)
-	project, err := database.GetProjectByID(arg)
-	if err != nil {
-		// Try searching by service name if ID fails
-		project, err = database.GetProjectByName(arg)
-	}
-
-	if err != nil || project.ServiceDir == "" {
-		fmt.Printf("❌ Could not find project or logs for: %s\n", arg)
-		os.Exit(1)
+	project := resolveProject(arg)
+	if project == nil {
+		return
 	}
 
 	logPath := filepath.Join(project.ServiceDir, ".cicdlog", "deploy.log")
@@ -93,7 +374,6 @@ func handleLogs(cfg *parser.Config) {
 		os.Exit(1)
 	}
 
-	// Check if user wants to follow project logs
 	if len(os.Args) > 3 && os.Args[3] == "-f" {
 		runCommand("tail", "-f", logPath)
 	} else {
@@ -109,40 +389,54 @@ func handleList(cfg *parser.Config) {
 		return
 	}
 
-	// 2. Setup the Table
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"ID", "Service Name", "Repo URL", "Branch", "Status", "PID", "Uptime", "User"})
+	t.AppendHeader(table.Row{"ID", "Service Name", "Branch", "Status", "PID", "Uptime", "Deploy", "Pinned"})
 
 	for _, p := range projects {
-		isRunning, pid, uptime := actions.GetProcessStatus(p.ServiceDir)
+		// B3: Use PID file on disk (not in-memory registry)
+		isRunning, pid, uptime := actions.GetProcessStatusFromDisk(p.ServiceDir)
 		statusIcon := text.FgHiRed.Sprint("● STOPPED")
-		rowColor := text.Colors{text.FgHiBlack}
 		if isRunning {
 			statusIcon = text.FgHiGreen.Sprint("● RUNNING")
-			rowColor = text.Colors{text.FgHiCyan}
+		}
+		pinnedIcon := ""
+		if p.IsPinned {
+			pinnedIcon = text.FgHiYellow.Sprint("📌")
 		}
 
 		t.AppendRow(table.Row{
 			p.ID,
 			p.ServiceName,
-			p.RepoURL,
 			p.Branch,
 			statusIcon,
 			pid,
 			uptime,
-			rowColor.Sprint(p.ServiceUser),
+			p.DeployStatus,
+			pinnedIcon,
 		})
-		t.AppendSeparator() // The magic "Continuous Line"
+		t.AppendSeparator()
 	}
-	// 3. Customize the look (Colors & Borders)
-	style := table.StyleRounded
-	style.Format.Header = text.FormatUpper                       // Make headers UPPERCASE
-	style.Color.Header = text.Colors{text.FgHiYellow, text.Bold} // Yellow Bold Header
-	style.Color.Border = text.Colors{text.FgHiBlack}             // Subtle Dim Borders
 
+	style := table.StyleRounded
+	style.Format.Header = text.FormatUpper
+	style.Color.Header = text.Colors{text.FgHiYellow, text.Bold}
+	style.Color.Border = text.Colors{text.FgHiBlack}
 	t.SetStyle(style)
 	t.Render()
+}
+
+// resolveProject finds a project by ID or name
+func resolveProject(idOrName string) *database.Project {
+	project, err := database.GetProjectByID(idOrName)
+	if err != nil {
+		project, err = database.GetProjectByName(idOrName)
+	}
+	if err != nil || project == nil {
+		fmt.Printf("❌ Project not found: %s\n", idOrName)
+		return nil
+	}
+	return project
 }
 
 func runCommand(name string, args ...string) {

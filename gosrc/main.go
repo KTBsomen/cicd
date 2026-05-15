@@ -13,31 +13,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
-
-	"github.com/shirou/gopsutil/v4/mem"
 )
 
-func GetResourceLimits(cpuPercent int, ramPercent int) (int, int64) {
-	period := 100000
-	cores := runtime.NumCPU()
-
-	cpuQuota := (cpuPercent * period * cores) / 100
-
-	v, err := mem.VirtualMemory()
-	if err != nil {
-		fmt.Printf("Error getting memory info: %v\n", err)
-		return 0, 0
-	}
-
-	ramLimit := (int64(v.Total) * int64(ramPercent)) / 100
-
-	return cpuQuota, ramLimit
-}
 func main() {
-	// Initialize the new multi-channel logger
+	// Initialize the multi-channel logger
 	logger.InitLogger()
 
 	// Ensure system dependencies (like git) are present
@@ -45,13 +26,13 @@ func main() {
 		fmt.Printf("⚠️ Warning: Dependency check failed: %v\n", err)
 	}
 
-	// 1. Handle Utility Commands (log, start, stop, ls, etc.)
+	// 1. Handle Utility Commands (log, start, stop, ls, token, doctor, etc.)
 	cli.HandleCommands(&parser.Config{})
 
 	var config parser.Config
 	config.Parse()
 	database.InitDB(&config)
-	database.LoadGlobalSettings(&config) // Restore from DB if flags are missing
+	database.LoadGlobalSettings(&config) // B2: Restore from DB, respecting ExplicitFlags
 
 	if !isRunningUnderSystemd(&config) {
 		database.SaveGlobalSettings(&config) // Persist current flags for the background service
@@ -62,10 +43,8 @@ func main() {
 				fmt.Println("❌ Failed to get executable path:", err)
 				os.Exit(1)
 			}
-
 		}
 		if config.RepoURL != "" {
-			// Resolve a secure, unique, and collision-free deployment path
 			existingPaths, _ := database.GetAllDeploymentPaths()
 			res, err := deploypath.ResolveDeploymentPath(deploypath.Config{
 				ServiceUser:         config.ServiceUser,
@@ -75,20 +54,13 @@ func main() {
 			})
 			if err != nil {
 				logger.Error("Secure Path Resolution Failed: "+err.Error(), &config)
-				fmt.Printf("❌ Secure Path Error: %v\n", err)
 				os.Exit(1)
 			}
-
-			// Update the config with the final resolved path (e.g., /home/ubuntu/api-a81f2c)
 			config.ServiceDir = res.FinalPath
-
-			// Natively create the directory and set permissions (Root Operation)
 			if err := actions.SetupProjectFolder(&config); err != nil {
 				logger.Error("Failed to prepare project folder: "+err.Error(), &config)
-				fmt.Printf("❌ Permission Error: %v\n", err)
 				os.Exit(1)
 			}
-
 			database.RegisterProject(&config)
 			database.RegisterToMongo(&config)
 			fmt.Println("🛠️  Running in Setup Mode...")
@@ -112,122 +84,117 @@ func main() {
 			panic(err)
 		}
 		logger.Info("🚀 Service started and enabled on boot!", &config)
-
 		os.Exit(0)
 	}
 
-	//Running under systemd starts here
-	// 1. start the server in background
+	// ═══════════════════════════════════════════════════════
+	//  Running under systemd starts here
+	// ═══════════════════════════════════════════════════════
+
+	// B1: On first boot with no admin email, generate and print setup token
+	if config.AdminEmail == "" {
+		token, err := database.GenerateSetupToken()
+		if err != nil {
+			logger.Error("Failed to generate setup token: "+err.Error(), &config)
+		} else {
+			logger.Info("🔑 FIRST-RUN SETUP TOKEN: "+token, &config)
+			fmt.Println("\n🔑 ═══════════════════════════════════════════════════")
+			fmt.Println("  SETUP TOKEN: " + token)
+			fmt.Println("  Paste this in the dashboard login. Expires in 15 min.")
+			fmt.Println("  Or run: cicd token")
+			fmt.Println("═══════════════════════════════════════════════════════\n")
+		}
+	}
+
+	// 1. Start the API server in background
 	go api.StartUnifiedServer(&config)
-	// 2. LOAD all projects (including ones from yesterday)
+
+	// 2. FLEET RESURRECTION — through the deployment queue (EC-3)
 	projects, err := database.GetAllProjects()
 	if err != nil {
 		logger.Error("Failed to get all projects: "+err.Error(), &config)
 		os.Exit(1)
 	}
-	// --- FLEET RESURRECTION ---
-	// Automatically sync and start all registered projects on boot
+
 	logger.Info(fmt.Sprintf("🔋 Restoring fleet: %d projects found", len(projects)), &config)
 	for _, p := range projects {
 		go func(proj database.Project) {
-			appCfg := proj.ToConfig()
+			appCfg, err := proj.ToConfig()
+			if err != nil {
+				logger.Error(fmt.Sprintf("Skipping %s: %v", proj.ServiceName, err), &config)
+				return
+			}
 			logger.Info(fmt.Sprintf("🛠️  Auto-deploying %s...", appCfg.ServiceName), appCfg)
 
-			// 1. Sync the Repository
-			if err := actions.SyncRepo(appCfg); err != nil {
-				logger.Error("Auto-sync Failed: "+err.Error(), appCfg)
-				return
-			}
-
-			// 2. Execute Deployment (which includes starting the process)
-			if err := actions.RunDeployment(appCfg); err != nil {
-				logger.Error("Auto-deployment Failed: "+err.Error(), appCfg)
-				return
-			}
+			// EC-3: Use the queue so webhooks during resurrection are handled correctly
+			actions.EnqueueDeployment(appCfg, "", "", func(cfg *parser.Config, hash, msg string) {
+				if err := actions.SyncRepo(cfg); err != nil {
+					logger.Error("Auto-sync Failed: "+err.Error(), cfg)
+					return
+				}
+				if err := actions.RunDeployment(cfg); err != nil {
+					logger.Error("Auto-deployment Failed: "+err.Error(), cfg)
+					return
+				}
+			})
 		}(p)
 	}
 
+	// 3. Watch MongoDB for remote config changes
 	go database.WatchChanges(&config, func(project *parser.Config) {
-		logger.Info(fmt.Sprintf("🔔 REMOTE TRIGGER: Deployment signal received for %s", project.ServiceName), project)
-
-		// 1. Sync the Repository (Clone or Pull as ServiceUser)
-		if err := actions.SyncRepo(project); err != nil {
-			logger.Error("Sync Failed: "+err.Error(), project)
-			return
-		}
-
-		// 2. Execute Deployment Scripts (install.sh)
-		if err := actions.RunDeployment(project); err != nil {
-			logger.Error("Execution Failed: "+err.Error(), project)
-			return
-		}
-
-		logger.Info("✅ DEPLOYMENT CYCLE COMPLETE for "+project.ServiceName, project)
+		logger.Info(fmt.Sprintf("🔔 REMOTE TRIGGER: Deployment signal for %s", project.ServiceName), project)
+		actions.EnqueueDeployment(project, "", "", func(cfg *parser.Config, hash, msg string) {
+			if err := actions.SyncRepo(cfg); err != nil {
+				logger.Error("Sync Failed: "+err.Error(), cfg)
+				return
+			}
+			if err := actions.RunDeployment(cfg); err != nil {
+				logger.Error("Execution Failed: "+err.Error(), cfg)
+				return
+			}
+			logger.Info("✅ DEPLOYMENT CYCLE COMPLETE for "+cfg.ServiceName, cfg)
+		})
 	})
 
-	fmt.Println(config.AdminEmail)
-	fmt.Println(config.PublicIP)
-	fmt.Println(config.Webhook)
-	fmt.Println(config.RepoURL)
-	fmt.Println(config.ServiceDir)
-	fmt.Println(GetResourceLimits(20, 50))
-	logger.SendErrorEmail(&config, "Test", "Test Error", "Test Step")
+	// Block on signal
 	stop := make(chan os.Signal, 1)
-	// systemd sends SIGTERM on stop, SIGINT on Ctrl+C
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
 	fmt.Println("🚀 Services running under systemd...")
-
-	// Block main
 	<-stop
 	fmt.Println("🛑 Stopped by system signal")
 }
+
 func InstallBinaryToSystem(cfg *parser.Config) (string, error) {
 	targetPath := "/usr/local/bin/cicd"
 	currentPath, _ := os.Executable()
-
-	// 1. Check if we are already in the right place
 	if currentPath == targetPath {
 		return targetPath, nil
 	}
-
 	logger.Info(parser.MustParseTemplate("Moving binary to {{.Path}} for permanence...", map[string]any{"Path": targetPath}), cfg)
-
-	// 2. Open the source
 	input, err := os.Open(currentPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open source binary: %v", err)
 	}
 	defer input.Close()
 	os.Remove(targetPath)
-	// 3. Create the destination (using sudo power)
-	// We use os.OpenFile to set 0755 permissions (executable)
 	output, err := os.OpenFile(targetPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 	if err != nil {
-		logger.Error(parser.MustParseTemplate("Failed to install to {{.Path}}: {{.Err}} (try running with sudo)", map[string]any{"Path": targetPath, "Err": err}), cfg)
 		return "", fmt.Errorf("failed to install to %s: %v (try running with sudo)", targetPath, err)
 	}
 	defer output.Close()
-
-	// 4. Copy the bytes
 	_, err = io.Copy(output, input)
 	return targetPath, err
 }
 
-// isRunningUnderSystemd returns true if the process was started by systemd.
 func isRunningUnderSystemd(cfg *parser.Config) bool {
 	if strings.EqualFold(cfg.Setup, "run") {
 		return true
 	}
-	// systemd always sets INVOCATION_ID for services
 	if os.Getenv("INVOCATION_ID") != "" {
 		return true
 	}
-
-	// Fallback: systemd also sets JOURNAL_STREAM
 	if os.Getenv("JOURNAL_STREAM") != "" {
 		return true
 	}
-
 	return false
 }
