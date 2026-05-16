@@ -216,6 +216,7 @@ func monitorProcess(p *ManagedProcess, logFile *os.File) {
 		// Non-zero exit = crash → restart with backoff
 		if _, ok := registry.Load(p.Config.ServiceDir); ok {
 			logger.Error(fmt.Sprintf("⚠️  Service '%s' crashed (exit code %d). Restarting with backoff...", p.Config.ServiceName, exitCode), p.Config)
+			Notify(p.Config, "⚠️ Service Crashed", fmt.Sprintf("Service '%s' exited unexpectedly with code %d. Attempting automated restart.", p.Config.ServiceName, exitCode))
 			restartWithBackoff(p)
 		}
 		return
@@ -314,7 +315,7 @@ func restartWithBackoff(p *ManagedProcess) {
 
 	if p.RestartCount > maxRestarts {
 		logger.Error(fmt.Sprintf("🔥 Max restarts (%d) exceeded for %s. Giving up. Manual intervention required.", maxRestarts, p.Config.ServiceName), p.Config)
-		sendNotification(p.Config, fmt.Sprintf("🔥 CRITICAL: Service '%s' has exceeded max restarts (%d). Process permanently stopped.", p.Config.ServiceName, maxRestarts))
+		Notify(p.Config, "🔥 Max Restarts Exceeded", fmt.Sprintf("Service '%s' has crashed too many times (%d). Automation has been suspended to prevent loops. Manual intervention required.", p.Config.ServiceName, maxRestarts))
 		registry.Delete(p.Config.ServiceDir)
 		return
 	}
@@ -340,39 +341,40 @@ func restartWithBackoff(p *ManagedProcess) {
 	}
 }
 
-// GetProcessStatus returns info for the daemon's in-memory API
-func GetProcessStatus(id string) (bool, int, string) {
+// GetProcessStatus returns info for the daemon's in-memory API.
+// Returns: isRunning, pid, uptime, restartCount
+func GetProcessStatus(id string) (bool, int, string, int) {
 	if val, ok := registry.Load(id); ok {
 		proc := val.(*ManagedProcess)
 		uptime := formatUptime(time.Since(proc.StartTime))
 		switch proc.Mode {
 		case RunModeDelegating:
-			return true, proc.ExtPID, uptime
+			return true, proc.ExtPID, uptime, proc.RestartCount
 		case RunModeBackground:
 			children := getChildrenInGroup(proc.ProcessGroup)
 			if len(children) > 0 {
-				return true, children[0], uptime
+				return true, children[0], uptime, proc.RestartCount
 			}
 		default:
 			if proc.Cmd != nil && proc.Cmd.Process != nil {
-				return true, proc.Cmd.Process.Pid, uptime
+				return true, proc.Cmd.Process.Pid, uptime, proc.RestartCount
 			}
 		}
 	}
-	return false, 0, "Not Running"
+	return false, 0, "Not Running", 0
 }
 
 // GetProcessStatusFromDisk checks the PID file on disk (B3 — for CLI use)
-func GetProcessStatusFromDisk(serviceDir string) (bool, int, string) {
+func GetProcessStatusFromDisk(serviceDir string) (bool, int, string, int) {
 	pidPath := filepath.Join(serviceDir, ".cicdlog", "app.pid")
 	pid := readPIDFile(pidPath)
 	if pid <= 0 {
-		return false, 0, "Not Running"
+		return false, 0, "Not Running", 0
 	}
 	if !isProcessAlive(pid) {
-		return false, 0, "Not Running (stale PID)"
+		return false, 0, "Not Running (stale PID)", 0
 	}
-	return true, pid, "Running"
+	return true, pid, "Running", 0
 }
 
 // GetRunMode returns the current run mode for a project

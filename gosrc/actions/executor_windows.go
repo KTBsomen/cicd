@@ -4,8 +4,6 @@ package actions
 
 import (
 	"fmt"
-	"gosrc/parser"
-	"net/http"
 	"os/exec"
 	"strings"
 )
@@ -46,19 +44,6 @@ func isProcessAlive(pid int) bool {
 // getChildrenInGroup is not applicable on Windows — returns empty
 func getChildrenInGroup(pgid int) []int {
 	return nil
-}
-
-// sendNotification sends a POST to the configured notify URL
-func sendNotification(cfg *parser.Config, msg string) {
-	if cfg.NotifyURL == "" {
-		return
-	}
-	payload := fmt.Sprintf(`{"text": "%s"}`, strings.ReplaceAll(msg, `"`, `\"`))
-	resp, err := http.Post(cfg.NotifyURL, "application/json", strings.NewReader(payload))
-	if err != nil {
-		return
-	}
-	resp.Body.Close()
 }
 
 // checkDiskSpace is a no-op on Windows for now

@@ -169,7 +169,7 @@ func (c *Config) Parse() {
 	flag.StringVar(&c.SMTPPass, "smtp-pass", "", "SMTP password")
 	flag.StringVar(&c.User, "user", "", "Username of the code runner")
 	flag.StringVar(&c.SudoPass, "sudo-pass", "", "Sudo password for package installation")
-	flag.StringVar(&c.ServiceName, "service-name", "myapp", "Name of the service")
+	flag.StringVar(&c.ServiceName, "service-name", "mycicdapp", "Name of the service")
 	flag.StringVar(&c.ServiceDir, "service-dir", "/home/", "Path of the service")
 	flag.StringVar(&c.ServiceUser, "service-user", "root", "Name of the service user")
 	flag.StringVar(&c.ServiceReset, "service-reset", "False", "True/False to delete systemd and restart")

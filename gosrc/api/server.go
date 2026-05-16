@@ -71,6 +71,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 		// cfg.WebhookSecret is correctly loaded from DB via LoadGlobalSettings at startup
 		if err := verifySignature(c, cfg.WebhookSecret); err != nil {
 			logger.Warn("Unauthorized webhook: "+err.Error(), cfg)
+			actions.Notify(cfg, "🛡️ Security: Unauthorized Webhook", fmt.Sprintf("A webhook hit from %s was rejected: %v", c.IP(), err))
 			return c.Status(401).SendString(err.Error())
 		}
 
@@ -161,6 +162,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 			"exp":  time.Now().Add(24 * time.Hour).Unix(),
 		})
 		tokenString, _ := token.SignedString(jwtSecret)
+		actions.Notify(cfg, "🔑 Security: Login Success", fmt.Sprintf("Admin session started via Setup Token from IP: %s", c.IP()))
 		return c.JSON(fiber.Map{"token": tokenString, "message": "Authenticated via setup token"})
 	})
 
@@ -183,6 +185,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 		magicLink := fmt.Sprintf("http://%s:%d/auth/verify?token=%s", cfg.PublicIP, cfg.Webhook, tokenString)
 		logger.SendMail(cfg, "Dashboard Login Link", magicLink)
 		logger.Info("📧 MAGIC LINK: "+magicLink, cfg)
+		actions.Notify(cfg, "📧 Security: Magic Link Requested", fmt.Sprintf("A login link was requested for %s from IP: %s", req.Email, c.IP()))
 		return c.SendString("Sent")
 	})
 
@@ -226,7 +229,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 
 		var enriched []projectStatus
 		for _, p := range projects {
-			isRunning, pid, uptime := actions.GetProcessStatus(p.ServiceDir)
+			isRunning, pid, uptime, _ := actions.GetProcessStatus(p.ServiceDir)
 			ps := projectStatus{
 				Project:   p,
 				IsRunning: isRunning,
@@ -363,6 +366,89 @@ func StartUnifiedServer(cfg *parser.Config) {
 		})
 	})
 
+	api.Put("/projects/:id", func(c fiber.Ctx) error {
+		id := c.Params("id")
+		project, err := database.GetProjectByID(id)
+		if err != nil {
+			return c.Status(404).SendString("Project not found")
+		}
+
+		type UpdateRequest struct {
+			RepoURL       string `json:"repo_url"`
+			Branch        string `json:"branch"`
+			ServiceName   string `json:"service_name"`
+			ServiceUser   string `json:"service_user"`
+			AdminEmail    string `json:"admin_email"`
+			GitUsername   string `json:"git_username"`
+			GitPassword   string `json:"git_password"`
+			WebhookPort   int    `json:"webhook_port"`
+			PublicIP      string `json:"public_ip"`
+			SudoPass      string `json:"sudo_pass"`
+			WebhookSecret string `json:"webhook_secret"`
+			MongoDBURI    string `json:"mongodb_uri"`
+		}
+
+		var req UpdateRequest
+		if err := c.Bind().JSON(&req); err != nil {
+			return c.Status(400).SendString("Invalid request format")
+		}
+
+		// Model after existing but update fields
+		appCfg, err := project.ToConfig()
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+
+		if req.RepoURL != "" {
+			appCfg.RepoURL = req.RepoURL
+		}
+		if req.Branch != "" {
+			appCfg.Branch = req.Branch
+		}
+		if req.ServiceName != "" {
+			appCfg.ServiceName = req.ServiceName
+		}
+		if req.ServiceUser != "" {
+			appCfg.ServiceUser = req.ServiceUser
+		}
+		if req.AdminEmail != "" {
+			appCfg.AdminEmail = req.AdminEmail
+		}
+		if req.GitUsername != "" {
+			appCfg.GitUsername = req.GitUsername
+		}
+		if req.GitPassword != "" {
+			appCfg.GitPassword = req.GitPassword
+		}
+		if req.PublicIP != "" {
+			appCfg.PublicIP = req.PublicIP
+		}
+		if req.SudoPass != "" {
+			appCfg.SudoPass = req.SudoPass
+		}
+		if req.WebhookSecret != "" {
+			appCfg.WebhookSecret = req.WebhookSecret
+		}
+		if req.MongoDBURI != "" {
+			appCfg.MongoDBURI = req.MongoDBURI
+		}
+
+		// Port conflict check
+		if req.WebhookPort > 0 {
+			existing, _ := database.CheckPortConflict(req.WebhookPort, project.ID)
+			if existing != "" {
+				return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("Port %d already in use by project '%s'", req.WebhookPort, existing)})
+			}
+			appCfg.Webhook = req.WebhookPort
+		}
+
+		if err := database.UpdateProject(id, appCfg); err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+
+		return c.JSON(fiber.Map{"message": "Project updated successfully"})
+	})
+
 	api.Get("/projects/:id/logs", func(c fiber.Ctx) error {
 		project, err := database.GetProjectByID(c.Params("id"))
 		if err != nil {
@@ -466,6 +552,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 		}
 		actions.StopAppProcess(project.ServiceDir)
 		database.SetDeployStatus(c.Params("id"), "idle")
+		actions.Notify(cfg, "🛑 Service Stopped", fmt.Sprintf("Service '%s' was manually stopped via Dashboard by Admin.", project.ServiceName))
 		return c.SendString("Stopped")
 	})
 
@@ -575,6 +662,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err := database.DeleteProject(c.Params("id")); err != nil {
 			return c.Status(500).SendString(err.Error())
 		}
+		actions.Notify(cfg, "🗑️ Project Deleted", fmt.Sprintf("Project '%s' (Path: %s) was permanently removed from node %s.", project.ServiceName, project.ServiceDir, cfg.PublicIP))
 		return c.SendString("Deleted")
 	})
 
@@ -604,7 +692,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 				}
 				var enriched []projectStatus
 				for _, p := range projects {
-					isRunning, pid, uptime := actions.GetProcessStatus(p.ServiceDir)
+					isRunning, pid, uptime, _ := actions.GetProcessStatus(p.ServiceDir)
 					ps := projectStatus{
 						Project:   p,
 						IsRunning: isRunning,
@@ -701,6 +789,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 			"smtp_host":      cfg.SMTPHost,
 			"smtp_port":      cfg.SMTPPort,
 			"smtp_user":      cfg.SMTPUser,
+			"smtp_pass":      cfg.SMTPPass,
 			"public_ip":      cfg.PublicIP,
 			"notify_url":     cfg.NotifyURL,
 			"deploy_timeout": cfg.DeployTimeout,
@@ -761,6 +850,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 		}
 		database.SaveGlobalSettings(cfg)
 		logger.Info("⚙️  Global settings updated via UI", cfg)
+		actions.Notify(cfg, "⚙️ Infrastructure: Settings Updated", fmt.Sprintf("Global configuration (Ports/SMTP/Secrets) was modified via Dashboard from IP: %s. System is restarting.", c.IP()))
 		go func() {
 			time.Sleep(1 * time.Second)
 			os.Exit(0)

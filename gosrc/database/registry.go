@@ -18,24 +18,27 @@ import (
 )
 
 type Project struct {
-	ID             int
-	ServiceName    string
-	ServiceUser    string
-	RepoURL        string
-	Branch         string
-	PublicIp       string
-	Webhook        string
-	AdminEmail     string
-	ServiceDir     string
-	User           string
-	LastCommitHash string
-	LastCommitMsg  string
-	History        any
-	GithubToken    string
-	GithubUsername string
-	IsPinned       bool
-	DeployStatus   string
-	CreatedAt      time.Time
+	ID             int       `json:"id"`
+	ServiceName    string    `json:"service_name"`
+	ServiceUser    string    `json:"service_user"`
+	RepoURL        string    `json:"repo_url"`
+	Branch         string    `json:"branch"`
+	PublicIp       string    `json:"public_ip"`
+	Webhook        string    `json:"webhook_port"`
+	AdminEmail     string    `json:"admin_email"`
+	ServiceDir     string    `json:"service_dir"`
+	User           string    `json:"user"`
+	LastCommitHash string    `json:"last_commit_hash"`
+	LastCommitMsg  string    `json:"last_commit_msg"`
+	History        any       `json:"history"`
+	GithubToken    string    `json:"github_token"`
+	GithubUsername string    `json:"github_username"`
+	SudoPass       string    `json:"sudo_pass"`
+	WebhookSecret  string    `json:"webhook_secret"`
+	MongoDBURI     string    `json:"mongodb_uri"`
+	IsPinned       bool      `json:"is_pinned"`
+	DeployStatus   string    `json:"deploy_status"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // CommitEntry represents a single deployment event in the commit history table
@@ -96,6 +99,9 @@ func InitDB(cfg *parser.Config) error {
 		lastCommitMsg   TEXT,
 		githubToken     TEXT,
 		githubUsername   TEXT,
+		sudoPass        TEXT DEFAULT '',
+		webhookSecret   TEXT DEFAULT '',
+		mongodb_uri     TEXT DEFAULT '',
 		history         TEXT DEFAULT '[]',
 		is_pinned       INTEGER DEFAULT 0,
 		deploy_status   TEXT DEFAULT 'idle',
@@ -106,6 +112,7 @@ func InitDB(cfg *parser.Config) error {
 		id               INTEGER PRIMARY KEY CHECK (id = 1),
 		mongodb_uri      TEXT DEFAULT '',
 		admin_email      TEXT DEFAULT '',
+		webhook_port     INTEGER DEFAULT 9641,
 		webhook_secret   TEXT DEFAULT '',
 		smtp_host        TEXT DEFAULT '',
 		smtp_port        INTEGER DEFAULT 587,
@@ -163,11 +170,12 @@ func InitDB(cfg *parser.Config) error {
 // SaveGlobalSettings stores the current configuration into the settings table
 func SaveGlobalSettings(cfg *parser.Config) {
 	query := `
-	INSERT INTO settings (id, mongodb_uri, admin_email, webhook_secret, smtp_host, smtp_port, smtp_user, smtp_pass, public_ip, notify_url, deploy_timeout, updated_at)
-	VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	INSERT INTO settings (id, mongodb_uri, admin_email, webhook_port, webhook_secret, smtp_host, smtp_port, smtp_user, smtp_pass, public_ip, notify_url, deploy_timeout, updated_at)
+	VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 	ON CONFLICT(id) DO UPDATE SET
 		mongodb_uri=excluded.mongodb_uri,
 		admin_email=excluded.admin_email,
+		webhook_port=excluded.webhook_port,
 		webhook_secret=excluded.webhook_secret,
 		smtp_host=excluded.smtp_host,
 		smtp_port=excluded.smtp_port,
@@ -178,7 +186,7 @@ func SaveGlobalSettings(cfg *parser.Config) {
 		deploy_timeout=excluded.deploy_timeout,
 		updated_at=CURRENT_TIMESTAMP;`
 
-	_, err := DB.Exec(query, cfg.MongoDBURI, cfg.AdminEmail, cfg.WebhookSecret, cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.PublicIP, cfg.NotifyURL, cfg.DeployTimeout)
+	_, err := DB.Exec(query, cfg.MongoDBURI, cfg.AdminEmail, cfg.Webhook, cfg.WebhookSecret, cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.PublicIP, cfg.NotifyURL, cfg.DeployTimeout)
 	if err != nil {
 		logger.Error("Failed to save global settings: "+err.Error(), cfg)
 	}
@@ -188,13 +196,13 @@ func SaveGlobalSettings(cfg *parser.Config) {
 // B2 FIX: Uses parser.ExplicitFlags — SQLite values only override when the user
 // did NOT explicitly pass that flag on the command line.
 func LoadGlobalSettings(cfg *parser.Config) {
-	query := `SELECT mongodb_uri, admin_email, webhook_secret, smtp_host, smtp_port, smtp_user, smtp_pass, public_ip, notify_url, deploy_timeout FROM settings WHERE id = 1`
+	query := `SELECT mongodb_uri, admin_email, webhook_port, webhook_secret, smtp_host, smtp_port, smtp_user, smtp_pass, public_ip, notify_url, deploy_timeout FROM settings WHERE id = 1`
 	row := DB.QueryRow(query)
 
 	var mongo, admin, secret, host, smtpUser, pass, ip, notifyURL string
-	var port, deployTimeout int
+	var port, deployTimeout, webhookport int
 
-	err := row.Scan(&mongo, &admin, &secret, &host, &port, &smtpUser, &pass, &ip, &notifyURL, &deployTimeout)
+	err := row.Scan(&mongo, &admin, &webhookport, &secret, &host, &port, &smtpUser, &pass, &ip, &notifyURL, &deployTimeout)
 	if err != nil {
 		return // No settings row yet — first boot
 	}
@@ -230,6 +238,9 @@ func LoadGlobalSettings(cfg *parser.Config) {
 	}
 	if !parser.ExplicitFlags["deploy-timeout"] && deployTimeout > 0 {
 		cfg.DeployTimeout = deployTimeout
+	}
+	if !parser.ExplicitFlags["webhook"] && webhookport > 0 {
+		cfg.Webhook = webhookport
 	}
 
 	if len(overrides) > 0 {
@@ -326,16 +337,13 @@ func RegisterProject(cfg *parser.Config) error {
 	query := `
 	INSERT INTO users (
 		serviceName, serviceUser, repoURL, branch, publicIp, 
-		webhook, adminEmail, serviceDir, user, githubToken, githubUsername
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		webhook, adminEmail, serviceDir, user, githubToken, githubUsername, sudoPass, webhookSecret, mongodb_uri
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(repoURL, branch, serviceName) DO UPDATE SET
-		serviceUser=excluded.serviceUser,
-		publicIp=excluded.publicIp,
-		adminEmail=excluded.adminEmail,
-		serviceDir=excluded.serviceDir,
-		user=excluded.user,
-		githubToken=excluded.githubToken,
-		githubUsername=excluded.githubUsername;`
+		serviceName=excluded.serviceName, serviceUser=excluded.serviceUser, publicIp=excluded.publicIp, 
+		webhook=excluded.webhook, adminEmail=excluded.adminEmail, serviceDir=excluded.serviceDir, 
+		user=excluded.user, githubToken=excluded.githubToken, githubUsername=excluded.githubUsername,
+		sudoPass=excluded.sudoPass, webhookSecret=excluded.webhookSecret, mongodb_uri=excluded.mongodb_uri`
 
 	_, err := DB.Exec(query,
 		cfg.ServiceName,
@@ -349,6 +357,9 @@ func RegisterProject(cfg *parser.Config) error {
 		cfg.User,
 		cfg.GitPassword,
 		cfg.GitUsername,
+		cfg.SudoPass,
+		cfg.WebhookSecret,
+		cfg.MongoDBURI,
 	)
 
 	if err != nil {
@@ -360,9 +371,46 @@ func RegisterProject(cfg *parser.Config) error {
 	return nil
 }
 
+// UpdateProject modifies an existing project's configuration by ID.
+func UpdateProject(id string, cfg *parser.Config) error {
+	query := `
+	UPDATE users SET 
+		serviceName=?, serviceUser=?, repoURL=?, branch=?, publicIp=?, 
+		webhook=?, adminEmail=?, serviceDir=?, user=?, githubToken=?, githubUsername=?,
+		sudoPass=?, webhookSecret=?, mongodb_uri=?
+	WHERE id=?`
+
+	_, err := DB.Exec(query,
+		cfg.ServiceName,
+		cfg.ServiceUser,
+		cfg.RepoURL,
+		cfg.Branch,
+		cfg.PublicIP,
+		strconv.Itoa(cfg.Webhook),
+		cfg.AdminEmail,
+		cfg.ServiceDir,
+		cfg.User,
+		cfg.GitPassword,
+		cfg.GitUsername,
+		cfg.SudoPass,
+		cfg.WebhookSecret,
+		cfg.MongoDBURI,
+		id,
+	)
+
+	if err != nil {
+		logger.Error(fmt.Sprintf("❌ DB Update Failed: %v", err), cfg)
+		return err
+	}
+
+	logger.Info(fmt.Sprintf("📝 Project '%s' updated in SQLite", cfg.ServiceName), cfg)
+	return nil
+}
+
 // GetAllProjects reads every project from the database so the orchestrator can start them.
 func GetAllProjects() ([]Project, error) {
 	rows, err := DB.Query(`SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user,
+		githubToken, githubUsername, COALESCE(sudoPass,''), COALESCE(webhookSecret,''), COALESCE(mongodb_uri,''),
 		COALESCE(is_pinned,0), COALESCE(deploy_status,'idle'),
 		COALESCE(lastCommitHash,''), COALESCE(lastCommitMsg,'') FROM users`)
 	if err != nil {
@@ -374,7 +422,7 @@ func GetAllProjects() ([]Project, error) {
 	for rows.Next() {
 		var p Project
 		var pinned int
-		err := rows.Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &pinned, &p.DeployStatus, &p.LastCommitHash, &p.LastCommitMsg)
+		err := rows.Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &p.GithubToken, &p.GithubUsername, &p.SudoPass, &p.WebhookSecret, &p.MongoDBURI, &pinned, &p.DeployStatus, &p.LastCommitHash, &p.LastCommitMsg)
 		if err != nil {
 			continue
 		}
@@ -387,7 +435,15 @@ func GetAllProjects() ([]Project, error) {
 func GetProjectByID(id string) (*Project, error) {
 	var p Project
 	var pinned int
-	err := DB.QueryRow("SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user, COALESCE(is_pinned,0), COALESCE(deploy_status,'idle') FROM users WHERE id = ?", id).Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &pinned, &p.DeployStatus)
+	err := DB.QueryRow(`
+		SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user, githubToken, githubUsername, 
+		COALESCE(sudoPass,''), COALESCE(webhookSecret,''), COALESCE(mongodb_uri,''),
+		COALESCE(is_pinned,0), COALESCE(deploy_status,'idle') 
+		FROM users WHERE id = ?`, id).Scan(
+		&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &p.GithubToken, &p.GithubUsername,
+		&p.SudoPass, &p.WebhookSecret, &p.MongoDBURI,
+		&pinned, &p.DeployStatus,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +454,15 @@ func GetProjectByID(id string) (*Project, error) {
 func GetProjectByRepoURL(repoURL string) (*Project, error) {
 	var p Project
 	var pinned int
-	err := DB.QueryRow("SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user, COALESCE(is_pinned,0), COALESCE(deploy_status,'idle') FROM users WHERE repoURL = ?", repoURL).Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &pinned, &p.DeployStatus)
+	err := DB.QueryRow(`
+		SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user, githubToken, githubUsername, 
+		COALESCE(sudoPass,''), COALESCE(webhookSecret,''), COALESCE(mongodb_uri,''),
+		COALESCE(is_pinned,0), COALESCE(deploy_status,'idle') 
+		FROM users WHERE repoURL = ?`, repoURL).Scan(
+		&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &p.GithubToken, &p.GithubUsername,
+		&p.SudoPass, &p.WebhookSecret, &p.MongoDBURI,
+		&pinned, &p.DeployStatus,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +473,15 @@ func GetProjectByRepoURL(repoURL string) (*Project, error) {
 func GetProjectByName(name string) (*Project, error) {
 	var p Project
 	var pinned int
-	err := DB.QueryRow("SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user, COALESCE(is_pinned,0), COALESCE(deploy_status,'idle') FROM users WHERE serviceName = ?", name).Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &pinned, &p.DeployStatus)
+	err := DB.QueryRow(`
+		SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user, githubToken, githubUsername, 
+		COALESCE(sudoPass,''), COALESCE(webhookSecret,''), COALESCE(mongodb_uri,''),
+		COALESCE(is_pinned,0), COALESCE(deploy_status,'idle') 
+		FROM users WHERE serviceName = ?`, name).Scan(
+		&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &p.GithubToken, &p.GithubUsername,
+		&p.SudoPass, &p.WebhookSecret, &p.MongoDBURI,
+		&pinned, &p.DeployStatus,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -438,17 +510,20 @@ func (p *Project) ToConfig() (*parser.Config, error) {
 		return nil, fmt.Errorf("project %d is missing required fields: %s", p.ID, strings.Join(missing, ", "))
 	}
 	return &parser.Config{
-		ServiceName: p.ServiceName,
-		ServiceUser: p.ServiceUser,
-		User:        p.User,
-		RepoURL:     p.RepoURL,
-		PublicIP:    p.PublicIp,
-		Webhook:     wh,
-		Branch:      p.Branch,
-		AdminEmail:  p.AdminEmail,
-		ServiceDir:  p.ServiceDir,
-		GitPassword: p.GithubToken,
-		GitUsername: p.GithubUsername,
+		ServiceName:   p.ServiceName,
+		ServiceUser:   p.ServiceUser,
+		User:          p.User,
+		RepoURL:       p.RepoURL,
+		PublicIP:      p.PublicIp,
+		Webhook:       wh,
+		Branch:        p.Branch,
+		AdminEmail:    p.AdminEmail,
+		ServiceDir:    p.ServiceDir,
+		GitPassword:   p.GithubToken,
+		GitUsername:   p.GithubUsername,
+		SudoPass:      p.SudoPass,
+		WebhookSecret: p.WebhookSecret,
+		MongoDBURI:    p.MongoDBURI,
 	}, nil
 }
 
@@ -532,10 +607,35 @@ func SetCurrentCommit(projectID int, hash string) error {
 	if err != nil {
 		return err
 	}
-	// Mark all existing "current" entries as intermediate
-	tx.Exec(`UPDATE commit_history SET status = 'intermediate' WHERE project_id = ? AND status = 'current'`, projectID)
-	// Mark this hash as current
-	tx.Exec(`UPDATE commit_history SET status = 'current', finished_at = CURRENT_TIMESTAMP WHERE project_id = ? AND commit_hash = ? AND status = 'intermediate' ORDER BY id DESC LIMIT 1`, projectID, hash)
+	defer tx.Rollback()
+
+	// 1. Mark all existing "current" entries as intermediate
+	_, err = tx.Exec(`UPDATE commit_history SET status = 'intermediate' WHERE project_id = ? AND status = 'current'`, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to reset current status: %v", err)
+	}
+
+	// 2. Mark this specific hash as current (using ID subquery for compatibility)
+	query := `
+		UPDATE commit_history SET status = 'current', finished_at = CURRENT_TIMESTAMP 
+		WHERE id = (
+			SELECT id FROM commit_history 
+			WHERE project_id = ? AND commit_hash = ? AND status = 'intermediate' 
+			ORDER BY id DESC LIMIT 1
+		)`
+	res, err := tx.Exec(query, projectID, hash)
+	if err != nil {
+		return fmt.Errorf("failed to set current status: %v", err)
+	}
+
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		// Fallback: If for some reason it's not 'intermediate', just find the latest for this hash
+		tx.Exec(`UPDATE commit_history SET status = 'current', finished_at = CURRENT_TIMESTAMP 
+		         WHERE id = (SELECT id FROM commit_history WHERE project_id = ? AND commit_hash = ? ORDER BY id DESC LIMIT 1)`, 
+				 projectID, hash)
+	}
+
 	return tx.Commit()
 }
 

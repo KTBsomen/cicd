@@ -317,7 +317,7 @@ func handleDoctor(cfg *parser.Config) {
 	check("All PIDs alive", func() error {
 		var dead []string
 		for _, p := range projects {
-			isRunning, _, _ := actions.GetProcessStatusFromDisk(p.ServiceDir)
+			isRunning, _, _, _ := actions.GetProcessStatusFromDisk(p.ServiceDir)
 			pidPath := filepath.Join(p.ServiceDir, ".cicdlog", "app.pid")
 			if _, err := os.Stat(pidPath); err == nil && !isRunning {
 				dead = append(dead, p.ServiceName)
@@ -395,7 +395,7 @@ func handleList(cfg *parser.Config) {
 
 	for _, p := range projects {
 		// B3: Use PID file on disk (not in-memory registry)
-		isRunning, pid, uptime := actions.GetProcessStatusFromDisk(p.ServiceDir)
+		isRunning, pid, uptime, _ := actions.GetProcessStatusFromDisk(p.ServiceDir)
 		statusIcon := text.FgHiRed.Sprint("● STOPPED")
 		if isRunning {
 			statusIcon = text.FgHiGreen.Sprint("● RUNNING")

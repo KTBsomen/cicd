@@ -99,6 +99,67 @@
             animation: pulse-slow 3s infinite;
         }
 
+        /* LOADING BAR */
+        .loading-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+            z-index: 9999;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        /* TOASTS */
+        .toast-container {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            pointer-events: none;
+        }
+
+        .toast {
+            pointer-events: auto;
+            min-width: 300px;
+            max-width: 400px;
+            padding: 1rem 1.5rem;
+            border-radius: 1.5rem;
+            background: rgba(24, 24, 27, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .progress-indicator {
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        .progress-indicator.active {
+            width: 100%;
+        }
+
         .progress-bar {
             height: 4px;
             background: rgba(255, 255, 255, 0.1);
@@ -115,9 +176,35 @@
 
 <body x-data="dashboard()" @keydown.escape="closeModals()">
 
+    <!-- TOP LOADING BAR -->
+    <div class="loading-bar" :style="'width: ' + (loading ? '70%' : '0%')" x-show="loading"
+        x-transition:enter="transition ease-out duration-300" x-transition:leave="transition ease-in duration-300">
+    </div>
+
+    <!-- TOAST NOTIFICATIONS -->
+    <div class="toast-container">
+        <template x-for="n in notifications" :key="n.id">
+            <div class="toast border-l-4" :class="{
+                'border-cyan-500': n.type === 'success',
+                'border-rose-500': n.type === 'error',
+                'border-amber-500': n.type === 'warning'
+            }">
+                <div class="flex-1">
+                    <p class="text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-0.5" x-text="n.type"></p>
+                    <p class="text-sm font-bold text-white" x-text="n.message"></p>
+                </div>
+                <button @click="removeNotification(n.id)" class="text-zinc-500 hover:text-white transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+        </template>
+    </div>
+
     <!-- AUTHENTICATION OVERLAY -->
     <template x-if="!isAuthenticated">
-        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/80 backdrop-blur-xl">
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/90 backdrop-blur-2xl">
             <div
                 class="glass p-12 rounded-[2.5rem] w-full max-w-md border border-white/10 shadow-2xl relative overflow-hidden">
                 <!-- Background Decoration -->
@@ -159,12 +246,28 @@
                     </div>
 
                     <div class="space-y-6" x-show="authMode === 'token'">
-                        <div>
+                        <div class="relative" x-data="{ show: false }">
                             <label
                                 class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">Setup
                                 Token</label>
-                            <input x-model="setupToken" type="text" placeholder="Paste 32-char token here..."
+                            <input x-model="setupToken" :type="show ? 'text' : 'password'"
+                                placeholder="Paste 32-char token here..."
                                 class="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono text-sm tracking-tighter">
+                            <button @click="show = !show" type="button"
+                                class="absolute right-4 bottom-4 text-zinc-500 hover:text-white transition">
+                                <svg x-show="!show" class="w-5 h-5" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                                <svg x-show="show" class="w-5 h-5" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                </svg>
+                            </button>
                         </div>
                         <button @click="tokenLogin()" :disabled="loading"
                             class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-4 rounded-2xl font-bold transition-all shadow-xl shadow-purple-900/20 flex items-center justify-center gap-3">
@@ -187,7 +290,7 @@
     </template>
 
     <!-- DASHBOARD SHELL -->
-    <div x-if="isAuthenticated" class="min-h-screen flex flex-col">
+    <div x-show="isAuthenticated" class="min-h-screen flex flex-col">
 
         <!-- TOP NAV -->
         <nav class="border-b border-white/5 bg-zinc-950/50 sticky top-0 z-40 backdrop-blur-md">
@@ -213,11 +316,16 @@
 
                 <div class="flex items-center gap-6">
                     <div class="hidden md:flex items-center gap-8 text-sm font-semibold">
-                        <a href="#" class="text-white hover:text-cyan-400 transition">Dashboard</a>
-                        <a href="#" @click="fetchSettings(); showSettingsModal = true"
-                            class="text-zinc-400 hover:text-white transition">Infrastructure</a>
-                        <a href="#" @click="showPortsModal = true; fetchPorts()"
-                            class="text-zinc-400 hover:text-white transition">Port Mapping</a>
+                        <a href="#" @click="selectServer(null)" :class="!selectedIP ? 'text-white' : 'text-zinc-400'"
+                            class="hover:text-white transition">Fleet Overview</a>
+                        <template x-if="selectedIP">
+                            <div class="flex items-center gap-8">
+                                <a href="#" @click="fetchSettings(selectedIP); showSettingsModal = true"
+                                    class="text-zinc-400 hover:text-white transition">Infrastructure</a>
+                                <a href="#" @click="showPortsModal = true; fetchPorts()"
+                                    class="text-zinc-400 hover:text-white transition">Port Mapping</a>
+                            </div>
+                        </template>
                     </div>
                     <div class="h-8 w-[1px] bg-white/5 hidden md:block"></div>
                     <button @click="logout()" class="text-zinc-500 hover:text-rose-400 transition p-2">
@@ -230,95 +338,144 @@
             </div>
         </nav>
 
-        <main class="flex-1 max-w-[1600px] mx-auto w-full p-6 grid grid-cols-12 gap-6">
+        <main class="flex-1 max-w-[1600px] mx-auto w-full p-6">
 
-            <!-- LEFT: SERVER TREE -->
-            <aside class="col-span-12 lg:col-span-3 space-y-6">
-                <div class="flex items-center justify-between px-2">
-                    <h3 class="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Deployment Fleet</h3>
-                    <span class="bg-zinc-900 text-zinc-400 text-[10px] px-2 py-0.5 rounded-md font-bold"
-                        x-text="fleet.length + ' Nodes'"></span>
-                </div>
-                <div class="space-y-3">
-                    <template x-for="ip in fleet">
-                        <button @click="selectServer(ip)"
-                            :class="selectedIP === ip ? 'bg-cyan-500/10 border-cyan-500/50 ring-1 ring-cyan-500/20' : 'bg-zinc-900/40 border-white/5 hover:border-white/10 hover:bg-zinc-900/60'"
-                            class="w-full p-5 rounded-2xl border flex items-center justify-between transition-all group">
-                            <div class="flex items-center gap-4">
-                                <div :class="selectedIP === ip ? 'bg-cyan-500' : 'bg-zinc-800'"
-                                    class="w-2 h-2 rounded-full shadow-sm"></div>
-                                <div class="text-left">
-                                    <p :class="selectedIP === ip ? 'text-white' : 'text-zinc-400'"
-                                        class="font-bold text-sm" x-text="ip"></p>
-                                    <p class="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mt-0.5">
-                                        Primary Node</p>
+            <!-- VIEW 1: FLEET OVERVIEW -->
+            <template x-if="!selectedIP">
+                <div class="space-y-12 py-10">
+                    <div class="max-w-2xl">
+                        <h1 class="text-6xl font-black tracking-tighter text-white mb-4">Command <span
+                                class="text-zinc-600">Center</span></h1>
+                        <p class="text-zinc-500 text-lg font-medium leading-relaxed">Orchestrating <span
+                                class="text-white" x-text="fleet.length"></span> infrastructure nodes across your
+                            production fleet.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                        <template x-for="ip in fleet">
+                            <div @click="selectServer(ip)"
+                                class="glass p-8 rounded-[3rem] border border-white/5 hover:border-cyan-500/30 hover:bg-white/[0.02] transition-all group cursor-pointer relative overflow-hidden">
+                                <div
+                                    class="absolute -top-12 -right-12 w-32 h-32 bg-cyan-500/5 rounded-full blur-3xl group-hover:bg-cyan-500/10 transition-colors">
+                                </div>
+
+                                <div class="relative z-10">
+                                    <div
+                                        class="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center mb-8 border border-white/5 group-hover:scale-110 transition-transform">
+                                        <svg class="w-7 h-7 text-cyan-400" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v4a2 2 0 01-2 2" />
+                                        </svg>
+                                    </div>
+
+                                    <h3 class="text-2xl font-black text-white mb-2" x-text="ip"></h3>
+                                    <p class="text-xs font-black text-zinc-600 uppercase tracking-widest mb-8">Edge
+                                        Deployment Node</p>
+
+                                    <div class="flex items-center justify-between pt-6 border-t border-white/5">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                            <span
+                                                class="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Responsive</span>
+                                        </div>
+                                        <svg class="w-5 h-5 text-zinc-700 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all"
+                                            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                                d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                        </svg>
+                                    </div>
                                 </div>
                             </div>
-                            <svg class="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" fill="none"
+                        </template>
+
+                        <div
+                            class="p-8 rounded-[3rem] border border-dashed border-white/10 flex flex-col items-center justify-center text-center group hover:border-white/20 transition-all cursor-not-allowed">
+                            <div
+                                class="w-12 h-12 rounded-full border border-dashed border-white/10 flex items-center justify-center mb-4 text-zinc-700">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                </svg>
+                            </div>
+                            <p class="text-[10px] font-black text-zinc-700 uppercase tracking-widest">Pro: Add Cloud
+                                Node</p>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- VIEW 2: NODE MANAGEMENT -->
+            <template x-if="selectedIP">
+                <div class="grid grid-cols-12 gap-6">
+
+                    <!-- LEFT: NODE CONTEXT -->
+                    <aside class="col-span-12 lg:col-span-3 space-y-6">
+                        <button @click="selectedIP = null;closeStreams();"
+                            class="flex items-center gap-3 text-zinc-500 hover:text-white transition-colors mb-8 group">
+                            <svg class="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none"
                                 stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M9 5l7 7-7 7" />
+                                    d="M15 19l-7-7 7-7" />
                             </svg>
+                            <span class="text-[10px] font-black uppercase tracking-widest">Back to Fleet</span>
                         </button>
-                    </template>
-                </div>
 
-                <!-- QUICK ACTIONS -->
-                <div class="glass p-6 rounded-3xl border border-white/5 mt-8">
-                    <h4 class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-6">Master Controls</h4>
-                    <div class="grid grid-cols-2 gap-3">
-                        <button @click="showCreateModal = true"
-                            class="p-4 bg-zinc-900/60 rounded-2xl border border-white/5 hover:border-cyan-500/50 transition-all group">
-                            <div
-                                class="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor"
-                                    viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                </svg>
+                        <div class="glass p-8 rounded-[3rem] border border-cyan-500/20 bg-cyan-500/[0.02]">
+                            <h2 class="text-3xl font-black text-white tracking-tighter mb-1" x-text="selectedIP"></h2>
+                            <p class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em] mb-8">Active
+                                Session</p>
+
+                            <div class="space-y-6">
+                                <div>
+                                    <p class="text-[9px] font-black text-zinc-600 uppercase tracking-widest mb-3">Node
+                                        Authority</p>
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="w-8 h-8 rounded-full bg-zinc-900 border border-white/5 flex items-center justify-center">
+                                            <svg class="w-4 h-4 text-zinc-500" fill="currentColor" viewBox="0 0 20 20">
+                                                <path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" />
+                                            </svg>
+                                        </div>
+                                        <span class="text-xs font-bold text-zinc-400">System Admin</span>
+                                    </div>
+                                </div>
                             </div>
-                            <p class="text-[10px] font-black text-white uppercase">New App</p>
-                        </button>
-                        <button @click="viewSystemLogs(selectedIP)" :disabled="!selectedIP"
-                            class="p-4 bg-zinc-900/60 rounded-2xl border border-white/5 hover:border-purple-500/50 transition-all group disabled:opacity-50">
-                            <div
-                                class="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor"
-                                    viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                            </div>
-                            <p class="text-[10px] font-black text-white uppercase">Sys Log</p>
-                        </button>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- CENTER: PROJECT GRID & TELEMETRY -->
-            <section class="col-span-12 lg:col-span-9 space-y-6">
-
-                <template x-if="!selectedIP">
-                    <div
-                        class="h-[600px] glass rounded-[3rem] border border-white/5 flex flex-col items-center justify-center text-center p-12">
-                        <div
-                            class="w-24 h-24 bg-zinc-900/80 rounded-full flex items-center justify-center mb-8 border border-white/5 relative">
-                            <div class="absolute inset-0 bg-cyan-500/20 blur-2xl animate-pulse"></div>
-                            <svg class="w-10 h-10 text-cyan-400 relative z-10" fill="none" stroke="currentColor"
-                                viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                            </svg>
                         </div>
-                        <h3 class="text-3xl font-black tracking-tight mb-4">Awaiting Node Selection</h3>
-                        <p class="text-zinc-500 max-w-sm font-medium">Connect to an active deployment node to view
-                            real-time telemetry and project status.</p>
-                    </div>
-                </template>
 
-                <template x-if="selectedIP">
-                    <div class="space-y-6">
-                        <!-- HEADER STATS -->
+                        <div class="glass p-6 rounded-[2.5rem] border border-white/5">
+                            <h4 class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-6">Server
+                                Actions</h4>
+                            <div class="grid grid-cols-1 gap-3">
+                                <button @click="newProject.public_ip = selectedIP; showCreateModal = true"
+                                    class="w-full p-5 bg-cyan-500/10 rounded-2xl border border-cyan-500/20 hover:bg-cyan-500/20 transition-all flex items-center gap-4">
+                                    <div class="w-8 h-8 bg-cyan-500/20 rounded-lg flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                        </svg>
+                                    </div>
+                                    <span class="text-[10px] font-black text-white uppercase tracking-widest">Register
+                                        New App</span>
+                                </button>
+                                <button @click="viewSystemLogs(selectedIP)"
+                                    class="w-full p-5 bg-zinc-900/60 rounded-2xl border border-white/5 hover:border-purple-500/50 transition-all flex items-center gap-4">
+                                    <div class="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                    </div>
+                                    <span class="text-[10px] font-black text-white uppercase tracking-widest">System
+                                        Engine Logs</span>
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- RIGHT: NODE MONITORING -->
+                    <section class="col-span-12 lg:col-span-9 space-y-8">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div class="glass p-6 rounded-[2rem] border border-white/5">
                                 <p class="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-2">Node
@@ -338,14 +495,13 @@
                                     Services</p>
                                 <div class="flex items-end gap-2">
                                     <span class="text-3xl font-black text-white"
-                                        x-text="projects.filter(p => p.PublicIP === selectedIP && p.is_running).length"></span>
+                                        x-text="projects.filter(p => p.is_running).length"></span>
                                     <span class="text-zinc-500 text-[10px] font-bold mb-1.5 uppercase">/ <span
-                                            x-text="projects.filter(p => p.PublicIP === selectedIP).length"></span>
-                                        Active</span>
+                                            x-text="projects.length"></span> Active</span>
                                 </div>
                                 <div class="progress-bar mt-4 bg-white/5">
                                     <div class="progress-fill bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]"
-                                        :style="'width: ' + (projects.filter(p => p.PublicIP === selectedIP).length > 0 ? (projects.filter(p => p.PublicIP === selectedIP && p.is_running).length / projects.filter(p => p.PublicIP === selectedIP).length * 100) : 0) + '%'">
+                                        :style="'width: ' + (projects.length > 0 ? (projects.filter(p => p.is_running).length / projects.length * 100) : 0) + '%'">
                                     </div>
                                 </div>
                             </div>
@@ -363,19 +519,16 @@
                             </div>
                         </div>
 
-                        <!-- PROJECT GRID -->
                         <div class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
-                            <template x-for="p in projects.filter(proj => proj.PublicIP === selectedIP)">
+                            <template x-for="p in projects">
                                 <div class="glass p-6 rounded-[2.5rem] border border-white/5 group relative transition-all cursor-pointer hover:bg-white/[0.02]"
                                     @click="viewLogs(p)">
-
-                                    <!-- Status Badge -->
                                     <div class="absolute top-6 right-6 flex items-center gap-2">
                                         <div :class="p.is_running ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'"
                                             class="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-white/5">
                                             <span x-text="p.is_running ? 'Online' : 'Offline'"></span>
                                         </div>
-                                        <template x-if="p.IsPinned">
+                                        <template x-if="p.is_pinned">
                                             <div class="bg-amber-500/20 text-amber-400 p-1 rounded-lg border border-amber-500/20 glow-amber"
                                                 title="Pinned: No deployments">
                                                 <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -385,20 +538,17 @@
                                             </div>
                                         </template>
                                     </div>
-
                                     <div class="mb-6">
                                         <h4 class="text-xl font-black text-white mb-1 group-hover:text-cyan-400 transition-colors"
-                                            x-text="p.ServiceName"></h4>
+                                            x-text="p.service_name"></h4>
                                         <div class="flex items-center gap-2 text-[10px] font-bold text-zinc-500">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
                                                 <path d="M12 8v4l3 3" />
                                             </svg>
-                                            <span x-text="p.Branch"></span>
+                                            <span x-text="p.branch"></span>
                                         </div>
                                     </div>
-
-                                    <!-- TELEMETRY BARS -->
                                     <div class="space-y-4 mb-8">
                                         <div>
                                             <div
@@ -425,8 +575,6 @@
                                             </div>
                                         </div>
                                     </div>
-
-                                    <!-- PROJECT DETAILS -->
                                     <div class="grid grid-cols-2 gap-4 mb-4">
                                         <div class="bg-zinc-900/60 p-3 rounded-2xl border border-white/5">
                                             <p class="text-[9px] font-black text-zinc-600 uppercase mb-1">PID</p>
@@ -439,22 +587,18 @@
                                                 x-text="p.ports && p.ports.length ? p.ports.join(', ') : '---'"></p>
                                         </div>
                                     </div>
-
-                                    <!-- LAST COMMIT -->
-                                    <div class="bg-zinc-900/40 rounded-xl px-3 py-2 mb-6" x-show="p.LastCommitHash">
+                                    <div class="bg-zinc-900/40 rounded-xl px-3 py-2 mb-6" x-show="p.last_commit_hash">
                                         <p class="text-[9px] font-black text-zinc-600 uppercase mb-1">Last Commit</p>
                                         <p class="text-[10px] font-mono text-cyan-400 truncate"
-                                            x-text="'#' + (p.LastCommitHash || '').substring(0, 8)"></p>
+                                            x-text="'#' + (p.last_commit_hash || '').substring(0, 8)"></p>
                                         <p class="text-[10px] text-zinc-500 truncate mt-0.5"
-                                            x-text="p.LastCommitMsg || ''"></p>
+                                            x-text="p.last_commit_msg || ''"></p>
                                     </div>
-
-                                    <!-- ACTIONS -->
                                     <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                                         <button @click.stop="viewHistory(p)"
                                             class="flex-1 bg-zinc-800 hover:bg-zinc-700 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">History</button>
                                         <button @click.stop="togglePin(p)"
-                                            :class="p.IsPinned ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-500 bg-zinc-800'"
+                                            :class="p.is_pinned ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-500 bg-zinc-800'"
                                             class="px-3 rounded-xl transition-colors">
                                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                                                 <path
@@ -474,6 +618,9 @@
                                             </button>
                                             <div x-show="open" @click.away="open = false"
                                                 class="absolute bottom-full right-0 mb-2 w-48 glass rounded-2xl border border-white/10 p-2 z-50">
+                                                <button @click="openEditModal(p)"
+                                                    class="w-full text-left p-3 text-xs font-bold text-zinc-400 hover:bg-white/5 rounded-xl transition">Edit
+                                                    Configuration</button>
                                                 <button @click="stopProject(p)"
                                                     class="w-full text-left p-3 text-xs font-bold text-rose-500 hover:bg-rose-500/10 rounded-xl transition">Stop
                                                     Process</button>
@@ -494,14 +641,13 @@
                             </template>
                         </div>
 
-                        <!-- LIVE LOG TERMINAL -->
                         <div x-show="selectedProject || systemLogsActive" class="space-y-4 pt-6" x-transition>
                             <div class="flex justify-between items-center px-4">
                                 <div class="flex items-center gap-3">
                                     <div class="w-3 h-3 bg-cyan-500 rounded-full animate-pulse"></div>
                                     <h3 class="text-xs font-black uppercase tracking-widest text-zinc-400">
                                         Live Stream: <span class="text-white"
-                                            x-text="selectedProject ? selectedProject.ServiceName : 'System Logs'"></span>
+                                            x-text="selectedProject ? selectedProject.service_name : 'System Logs'"></span>
                                     </h3>
                                 </div>
                                 <button @click="closeLogs()"
@@ -530,9 +676,9 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </template>
-            </section>
+                    </section>
+                </div>
+            </template>
         </main>
 
         <!-- COMMIT HISTORY MODAL -->
@@ -544,7 +690,7 @@
                 <div class="flex justify-between items-center mb-8">
                     <div>
                         <h3 class="text-3xl font-black text-white tracking-tighter"
-                            x-text="historyProject?.ServiceName + ' Timeline'"></h3>
+                            x-text="historyProject?.service_name + ' Timeline'"></h3>
                         <p class="text-zinc-500 text-sm mt-1 font-medium">Historical snapshots available for rollback.
                         </p>
                     </div>
@@ -645,12 +791,28 @@
                                 <input x-model="settings.public_ip" type="text" placeholder="Auto-detect"
                                     class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
                             </div>
-                            <div class="relative col-span-2">
+                            <div class="relative col-span-2" x-data="{ show: false }">
                                 <label
                                     class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook
                                     Secret</label>
-                                <input x-model="settings.webhook_secret" type="password" placeholder="••••••••"
+                                <input x-model="settings.webhook_secret" :type="show ? 'text' : 'password'"
+                                    placeholder="••••••••"
                                     class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                <button @click="show = !show" type="button"
+                                    class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white transition">
+                                    <svg x-show="!show" class="w-5 h-5" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                    <svg x-show="show" class="w-5 h-5" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                    </svg>
+                                </button>
                             </div>
                             <div class="relative col-span-2">
                                 <label
@@ -711,12 +873,28 @@
                                     <input x-model="settings.smtp_user" type="text"
                                         class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
                                 </div>
-                                <div class="relative">
+                                <div class="relative" x-data="{ show: false }">
                                     <label
                                         class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP
                                         Password</label>
-                                    <input x-model="settings.smtp_pass" type="password" placeholder="••••••••"
+                                    <input x-model="settings.smtp_pass" :type="show ? 'text' : 'password'"
+                                        placeholder="••••••••"
                                         class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                    <button @click="show = !show" type="button"
+                                        class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white transition">
+                                        <svg x-show="!show" class="w-5 h-5" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                        <svg x-show="show" class="w-5 h-5" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -787,12 +965,28 @@
                                     <input x-model="newProject.git_username" type="text" placeholder="Optional"
                                         class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
                                 </div>
-                                <div class="relative col-span-2">
+                                <div class="relative col-span-2" x-data="{ show: false }">
                                     <label
                                         class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git
                                         Personal Access Token</label>
-                                    <input x-model="newProject.git_password" type="password" placeholder="ghp_..."
+                                    <input x-model="newProject.git_password" :type="show ? 'text' : 'password'"
+                                        placeholder="ghp_..."
                                         class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                                    <button @click="show = !show" type="button"
+                                        class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white transition">
+                                        <svg x-show="!show" class="w-5 h-5" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                        <svg x-show="show" class="w-5 h-5" fill="none" stroke="currentColor"
+                                            viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -813,14 +1007,8 @@
                                 <input x-model="newProject.service_name" type="text" placeholder="my-app"
                                     class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
                             </div>
-                            <div class="grid grid-cols-2 gap-6">
-                                <div class="relative">
-                                    <label
-                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">System
-                                        User (OS)</label>
-                                    <input x-model="newProject.user" type="text" placeholder="e.g. ubuntu"
-                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
-                                </div>
+                            <div class="grid grid-cols-1 gap-6">
+
                                 <div class="relative">
                                     <label
                                         class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Deploy
@@ -903,6 +1091,98 @@
             </div>
         </div>
 
+        <!-- EDIT PROJECT MODAL -->
+        <div x-show="showEditModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition
+            x-cloak>
+            <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="showEditModal = false"></div>
+            <div
+                class="glass p-12 rounded-[3.5rem] w-full max-w-2xl border border-white/10 shadow-2xl relative z-10 overflow-y-auto max-h-[90vh]">
+                <h3 class="text-4xl font-black text-amber-400 tracking-tighter mb-4">Edit Configuration</h3>
+                <p class="text-zinc-500 text-sm mb-12 font-medium">Modify deployment parameters for <span class="text-white" x-text="editProjectData.service_name"></span></p>
+
+                <div class="space-y-12">
+                    <section class="space-y-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <span class="w-8 h-[1px] bg-cyan-500/30"></span>
+                            <span class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">Source Control</span>
+                        </div>
+                        <div class="grid grid-cols-1 gap-6">
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Repository URL</label>
+                                <input x-model="editProjectData.repo_url" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                            </div>
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Branch</label>
+                                    <input x-model="editProjectData.branch" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                </div>
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git Username</label>
+                                    <input x-model="editProjectData.git_username" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                </div>
+                                <div class="relative col-span-2">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git PAT / Token</label>
+                                    <input x-model="editProjectData.git_password" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="space-y-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <span class="w-8 h-[1px] bg-purple-500/30"></span>
+                            <span class="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">Metadata & ID</span>
+                        </div>
+                        <div class="grid grid-cols-1 gap-6">
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Service Name</label>
+                                <input x-model="editProjectData.service_name" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                            </div>
+                             <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Public IP</label>
+                                <input x-model="editProjectData.public_ip" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono">
+                            </div>
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Service User</label>
+                                    <input x-model="editProjectData.service_user" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                </div>
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook Port</label>
+                                    <input x-model.number="editProjectData.webhook_port" type="number" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                </div>
+                            </div>
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Admin Email</label>
+                                <input x-model="editProjectData.admin_email" type="email" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                            </div>
+                            <div class="relative">
+                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">MongoDB URI Override</label>
+                                <input x-model="editProjectData.mongodb_uri" type="text" placeholder="mongodb://..." class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono">
+                            </div>
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Sudo Password</label>
+                                    <input x-model="editProjectData.sudo_pass" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                </div>
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook Secret</label>
+                                    <input x-model="editProjectData.webhook_secret" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="flex gap-4 pt-6">
+                        <button @click="updateProject()" class="flex-1 bg-amber-500 hover:bg-amber-400 py-5 rounded-[1.5rem] font-black text-black transition-all shadow-xl shadow-amber-900/20">
+                            Save Changes
+                        </button>
+                        <button @click="showEditModal = false" class="px-10 py-5 bg-zinc-900 rounded-[1.5rem] font-bold hover:bg-zinc-800 transition-colors">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- PORT MAPPING MODAL -->
         <div x-show="showPortsModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition
             x-cloak>
@@ -947,42 +1227,80 @@
                 authMode: 'email',
                 loginEmail: '',
                 setupToken: '',
-                loading: false,
+                loadingCount: 0,
+                get loading() { return this.loadingCount > 0 },
+                notifications: [],
                 fleet: [],
                 selectedIP: null,
                 projects: [],
-                selectedProject: null,
                 historyProject: null,
-                activeLogs: '',
-                systemLogsActive: false,
-                showCreateModal: false,
-                showSettingsModal: false,
-                showHistoryModal: false,
-                showPortsModal: false,
-                serverPorts: [],
-                settings: {},
                 history: [],
-                fleetStream: null,
+                serverPorts: [],
+                showCreateModal: false,
+                showHistoryModal: false,
+                showSettingsModal: false,
+                showPortsModal: false,
+                systemLogsActive: false,
+                activeLogs: '',
                 logStream: null,
+                fleetStream: null,
                 newProject: {
                     repo_url: '',
-                    service_name: '',
                     branch: 'main',
-                    public_ip: '',
-                    user: '',
+                    service_name: '',
                     service_user: '',
-                    base_dir: '/home/',
+                    base_dir: '',
+                    admin_email: '',
                     git_username: '',
                     git_password: '',
-                    sudo_pass: '',
+                    webhook_secret: '',
                     webhook_port: 0,
-                    webhook_secret: ''
+                    sudo_pass: '',
+                    public_ip: ''
                 },
+                showEditModal: false,
+                editProjectData: {
+                    id: '',
+                    repo_url: '',
+                    branch: '',
+                    service_name: '',
+                    service_user: '',
+                    admin_email: '',
+                    git_username: '',
+                    git_password: '',
+                    webhook_port: 0,
+                    public_ip: '',
+                    sudo_pass: '',
+                    webhook_secret: '',
+                    mongodb_uri: ''
+                },
+                settings: {
+                    mongodb_uri: '',
+                    admin_email: '',
+                    webhook_secret: '',
+                    webhook_port: 9641,
+                    public_ip: '',
+                    smtp_host: '',
+                    smtp_port: 587,
+                    smtp_user: '',
+                    smtp_pass: '',
+                    notify_url: '',
+                    deploy_timeout: 300
+                },
+                gatewaySettings: null,
 
                 init() {
+                    // Normalize token if we just arrived from magic link
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.has('token')) {
+                        localStorage.setItem('cicd_token', urlParams.get('token'));
+                        window.history.replaceState({}, document.title, "/dashboard");
+                        this.isAuthenticated = true;
+                    }
+
                     if (this.isAuthenticated) {
                         this.fetchFleet();
-                        this.initFleetStream();
+                        this.fetchSettings();
                     }
                     // Auto-scroll terminal whenever logs change, regardless of source
                     this.$watch('activeLogs', () => {
@@ -991,6 +1309,48 @@
                             if (el) el.scrollTop = el.scrollHeight;
                         });
                     });
+                },
+
+                // UI UTILS
+                notify(message, type = 'success') {
+                    const id = Date.now();
+                    this.notifications.push({ id, message, type });
+                    setTimeout(() => this.removeNotification(id), 5000);
+                },
+
+                removeNotification(id) {
+                    this.notifications = this.notifications.filter(n => n.id !== id);
+                },
+
+                async apiCall(url, opts = {}) {
+                    this.loadingCount++;
+                    try {
+                        const token = localStorage.getItem('cicd_token');
+                        const headers = { ...opts.headers, 'Authorization': token };
+                        const res = await fetch(url, { ...opts, headers });
+
+                        if (res.status === 401) {
+                            this.notify("Session expired. Please log in again.", "error");
+                            return this.logout();
+                        }
+
+                        if (!res.ok) {
+                            const error = await res.text();
+                            const cleanUrl = url.split('?')[0];
+                            this.notify(`[${res.status}] ${error || 'Request Failed'}: ${cleanUrl}`, "error");
+                            throw new Error(error);
+                        }
+
+                        return res;
+                    } catch (e) {
+                        if (!e.message.includes("401")) {
+                            const cleanUrl = url.split('?')[0];
+                            this.notify(`Network Error: ${e.message} (${cleanUrl})`, "error");
+                        }
+                        throw e;
+                    } finally {
+                        this.loadingCount--;
+                    }
                 },
 
                 // AUTHENTICATION
@@ -1002,8 +1362,8 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ email: this.loginEmail })
                         });
-                        if (res.ok) alert("Magic link sent! Check your email (or terminal logs).");
-                        else alert("Authentication failed. Check admin email config.");
+                        if (res.ok) this.notify("Magic link sent! Check your email.");
+                        else this.notify("Authentication failed. Check admin email config.", "error");
                     } finally { this.loading = false; }
                 },
 
@@ -1019,72 +1379,121 @@
                         if (res.ok) {
                             localStorage.setItem('cicd_token', data.token);
                             this.isAuthenticated = true;
-                            this.init();
-                        } else {
-                            alert(data.error || "Invalid token");
-                        }
+                            this.fetchFleet();
+                            this.fetchSettings();
+                            this.notify("Successfully authenticated with Setup Token");
+                        } else this.notify(data.error || "Invalid token", "error");
                     } finally { this.loading = false; }
                 },
 
                 logout() {
+                    this.closeStreams();
                     localStorage.removeItem('cicd_token');
-                    location.reload();
+                    this.isAuthenticated = false;
+                    this.selectedIP = null;
                 },
 
                 // CORE DATA
                 async fetchFleet() {
-                    const token = localStorage.getItem('cicd_token');
-                    const res = await fetch('/api/fleet', { headers: { 'Authorization': token } });
-                    if (res.status === 401) return this.logout();
-                    this.fleet = await res.json();
-
-                    // Auto-select first node if none selected
-                    if (!this.selectedIP && this.fleet.length > 0) {
-                        this.selectServer(this.fleet[0]);
-                    }
-                    this.refreshData();
+                    try {
+                        const res = await this.apiCall('/api/fleet');
+                        this.fleet = await res.json();
+                    } catch (e) { }
                 },
 
                 async refreshData() {
                     if (!this.selectedIP) return;
-                    const token = localStorage.getItem('cicd_token');
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
 
                     try {
-                        const res = await fetch(`${baseUrl}/api/projects`, { headers: { 'Authorization': token } });
-                        if (res.ok) {
-                            this.projects = await res.json();
-                        }
+                        const res = await this.apiCall(`${baseUrl}/api/projects`);
+                        this.projects = await res.json();
+                    } catch (e) { }
+                },
+
+                async fetchSettings(ip = null) {
+                    // Always start from gateway baseline port if fetching remote node
+                    const basePort = this.gatewaySettings ? this.gatewaySettings.webhook_port : 9641;
+                    const port = ip ? basePort : (this.settings.webhook_port || 9641);
+                    const url = ip ? `http://${ip}:${port}/api/settings` : '/api/settings';
+
+                    try {
+                        const res = await this.apiCall(url);
+                        const data = await res.json();
+                        this.settings = data;
+                        if (!ip) this.gatewaySettings = { ...data };
                     } catch (e) {
-                        console.error("Failed to fetch node projects:", e);
+                        if (ip) this.notify(`Target node ${ip}:${port} is unreachable. Check firewall/port.`, 'error');
                     }
                 },
 
-                initFleetStream() {
+                async selectServer(ip) {
+                    this.projects = [];
+                    this.closeStreams();
+                    this.restoreGatewaySettings();
+
+                    if (!ip) {
+                        this.selectedIP = null;
+                        return;
+                    }
+
+                    this.selectedIP = ip;
+                    await this.fetchSettings(ip);
+                    this.refreshData();
+                    this.initProjectStream(ip);
+                },
+
+                closeStreams() {
+                    if (this.fleetStream) {
+                        this.fleetStream.close();
+                        this.fleetStream = null;
+                    }
+                    this.closeLogs();
+                },
+
+                restoreGatewaySettings() {
+                    if (this.gatewaySettings) {
+                        this.settings = JSON.parse(JSON.stringify(this.gatewaySettings));
+                    } else {
+                        this.settings = {
+                            mongodb_uri: '',
+                            admin_email: '',
+                            webhook_secret: '',
+                            webhook_port: 9641,
+                            public_ip: '',
+                            smtp_host: '',
+                            smtp_port: 587,
+                            smtp_user: '',
+                            smtp_pass: '',
+                            notify_url: '',
+                            deploy_timeout: 300
+                        };
+                    }
+                },
+
+
+                initProjectStream(ip) {
                     if (this.fleetStream) this.fleetStream.close();
                     const port = this.settings.webhook_port || 9641;
-                    const baseUrl = this.selectedIP ? `http://${this.selectedIP}:${port}` : '';
+                    const baseUrl = `http://${ip}:${port}`;
                     this.fleetStream = new EventSource(`${baseUrl}/api/stream/fleet?token=${localStorage.getItem('cicd_token')}`);
                     this.fleetStream.onmessage = (e) => {
                         const data = JSON.parse(e.data);
                         if (data) this.projects = data;
                     };
-                },
-
-                selectServer(ip) {
-                    this.selectedIP = ip;
-                    this.closeLogs();
-                    this.refreshData();
-                    this.initFleetStream();
+                    this.fleetStream.onerror = () => {
+                        console.error("Fleet stream disconnected");
+                        // Optional: auto-reconnect logic or status indicator
+                    };
                 },
 
                 // LOGS & TERMINAL
                 async viewLogs(p) {
                     this.selectedProject = p;
                     this.systemLogsActive = false;
-                    this.activeLogs = `--- CONNECTING TO ${p.ServiceName} STREAM ---\n`;
-                    this.initLogStream(p.ID);
+                    this.activeLogs = `--- CONNECTING TO ${p.service_name} STREAM ---\n`;
+                    this.initLogStream(p.id);
                 },
 
                 async viewSystemLogs() {
@@ -1111,10 +1520,17 @@
                     this.logStream = new EventSource(`${baseUrl}/api/projects/${id}/logs/stream?token=${localStorage.getItem('cicd_token')}`);
                     this.logStream.onmessage = (e) => {
                         this.activeLogs += e.data + "\n";
+                        // Prevent memory leak by keeping last 5000 lines
+                        const lines = this.activeLogs.split('\n');
+                        if (lines.length > 5000) this.activeLogs = lines.slice(-5000).join('\n');
+
                         this.$nextTick(() => {
                             const el = document.getElementById('log-container');
                             if (el) el.scrollTop = el.scrollHeight;
                         });
+                    };
+                    this.logStream.onerror = () => {
+                        this.activeLogs += "\n--- Stream connection lost. Waiting for retry... ---\n";
                     };
                 },
 
@@ -1142,90 +1558,134 @@
 
                 // PROJECT ACTIONS
                 async createProject() {
-                    this.loading = true;
                     try {
-                        const res = await fetch('/api/projects', {
+                        const port = this.settings.webhook_port || 9641;
+                        const baseUrl = `http://${this.selectedIP}:${port}`;
+                        await this.apiCall(`${baseUrl}/api/projects`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('cicd_token') },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(this.newProject)
                         });
-                        if (res.ok) {
-                            this.showCreateModal = false;
-                            alert("Project registered and deployment initiated!");
-                        } else alert("Creation failed: " + await res.text());
-                    } finally { this.loading = false; }
+                        this.showCreateModal = false;
+                        this.notify("Project registered and deployment initiated!");
+                        this.refreshData();
+                        // Reset form
+                        this.newProject.repo_url = '';
+                        this.newProject.service_name = '';
+                    } catch (e) { }
+                },
+
+                openEditModal(p) {
+                    this.editProjectData = {
+                        id: p.id,
+                        repo_url: p.repo_url,
+                        branch: p.branch,
+                        service_name: p.service_name,
+                        service_user: p.service_user,
+                        admin_email: p.admin_email,
+                        git_username: p.github_username || '',
+                        git_password: p.github_token || '',
+                        webhook_port: parseInt(p.webhook_port) || 0,
+                        public_ip: p.public_ip,
+                        sudo_pass: p.sudo_pass || '',
+                        webhook_secret: p.webhook_secret || '',
+                        mongodb_uri: p.mongodb_uri || ''
+                    };
+                    this.showEditModal = true;
+                },
+
+                async updateProject() {
+                    try {
+                        const port = this.settings.webhook_port || 9641;
+                        const baseUrl = `http://${this.selectedIP}:${port}`;
+                        await this.apiCall(`${baseUrl}/api/projects/${this.editProjectData.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.editProjectData)
+                        });
+                        this.showEditModal = false;
+                        this.notify("Project configuration updated!");
+                        this.refreshData();
+                    } catch (e) { }
                 },
 
                 async redeployProject(p) {
-                    if (!confirm(`Trigger new deployment for ${p.ServiceName}?`)) return;
+                    if (!confirm(`Trigger new deployment for ${p.service_name}?`)) return;
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
-                    await fetch(`${baseUrl}/api/projects/${p.ID}/deploy`, {
-                        method: 'POST',
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
+                    try {
+                        await this.apiCall(`${baseUrl}/api/projects/${p.id}/deploy`, { method: 'POST' });
+                        this.notify(`Deployment initiated for ${p.service_name}`);
+                    } catch (e) { }
                 },
 
                 async stopProject(p) {
-                    if (!confirm(`Stop process for ${p.ServiceName}?`)) return;
+                    if (!confirm(`Stop process for ${p.service_name}?`)) return;
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
-                    await fetch(`${baseUrl}/api/projects/${p.ID}/stop`, {
-                        method: 'POST',
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
+                    try {
+                        await this.apiCall(`${baseUrl}/api/projects/${p.id}/stop`, { method: 'POST' });
+                        this.notify(`${p.service_name} process stopped.`);
+                        this.refreshData();
+                    } catch (e) { }
                 },
 
                 async togglePin(p) {
-                    const action = p.IsPinned ? 'unpin' : 'pin';
+                    const action = p.is_pinned ? 'unpin' : 'pin';
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
-                    await fetch(`${baseUrl}/api/projects/${p.ID}/${action}`, {
-                        method: 'POST',
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
+                    try {
+                        await this.apiCall(`${baseUrl}/api/projects/${p.id}/${action}`, { method: 'POST' });
+                        this.notify(p.is_pinned ? `${p.service_name} unpinned.` : `${p.service_name} pinned (no auto-deploys).`);
+                        this.refreshData();
+                    } catch (e) { }
                 },
 
                 async forceReinstall(p) {
-                    if (!confirm(`Wipe cache and force full install for ${p.ServiceName}?`)) return;
+                    if (!confirm(`Wipe cache and force full install for ${p.service_name}?`)) return;
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
-                    await fetch(`${baseUrl}/api/projects/${p.ID}/reinstall`, {
-                        method: 'POST',
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
+                    try {
+                        await this.apiCall(`${baseUrl}/api/projects/${p.id}/reinstall`, { method: 'POST' });
+                        this.notify(`Force reinstall initiated for ${p.service_name}`);
+                    } catch (e) { }
                 },
 
                 async deleteProject(p) {
-                    if (!confirm(`DELETE ${p.ServiceName} PERMANENTLY?`)) return;
+                    if (!confirm(`DELETE ${p.service_name} PERMANENTLY?`)) return;
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
-                    await fetch(`${baseUrl}/api/projects/${p.ID}`, {
-                        method: 'DELETE',
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
-                    });
+                    try {
+                        await this.apiCall(`${baseUrl}/api/projects/${p.id}`, { method: 'DELETE' });
+                        this.notify(`${p.service_name} deleted from this node.`);
+                        this.refreshData();
+                    } catch (e) { }
                 },
 
                 async runCustomCommand(p) {
-                    const cmd = prompt(`Enter bash command to run inside ${p.ServiceName}:`);
+                    const cmd = prompt(`Enter bash command to run inside ${p.service_name}:`);
                     if (!cmd) return;
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
-                    const res = await fetch(`${baseUrl}/api/projects/${p.ID}/run`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('cicd_token') },
-                        body: JSON.stringify({ command: cmd })
-                    });
-                    const output = await res.text();
-                    alert(output || 'Command executed (no output)');
+                    try {
+                        const res = await this.apiCall(`${baseUrl}/api/projects/${p.id}/run`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ command: cmd })
+                        });
+                        const output = await res.text();
+                        alert(output || 'Command executed (no output)');
+                    } catch (e) { }
                 },
 
                 async fetchPorts() {
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
-                    const res = await fetch(`${baseUrl}/api/server/ports`, { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
-                    const data = await res.json();
-                    this.serverPorts = data.listening || [];
+                    try {
+                        const res = await this.apiCall(`${baseUrl}/api/server/ports`);
+                        const data = await res.json();
+                        this.serverPorts = data.listening || [];
+                    } catch (e) { }
                 },
 
                 // HISTORY & ROLLBACK
@@ -1233,51 +1693,47 @@
                     this.historyProject = p;
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
-                    const res = await fetch(`${baseUrl}/api/projects/${p.ID}/history`, { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
-                    this.history = await res.json();
-                    this.showHistoryModal = true;
+                    try {
+                        const res = await this.apiCall(`${baseUrl}/api/projects/${p.id}/history`);
+                        this.history = await res.json();
+                        this.showHistoryModal = true;
+                    } catch (e) { }
                 },
 
                 async rollbackTo(hash) {
-                    if (!confirm(`ROLLBACK to ${hash.substring(0, 8)}? Current process will be replaced.`)) return;
-                    this.loading = true;
+                    if (!hash || !confirm(`Rollback ${this.historyProject.service_name} to ${hash.substring(0, 8)}?`)) return;
                     const port = this.settings.webhook_port || 9641;
                     const baseUrl = `http://${this.selectedIP}:${port}`;
                     try {
-                        await fetch(`${baseUrl}/api/projects/${this.historyProject.ID}/rollback`, {
+                        await this.apiCall(`${baseUrl}/api/projects/${this.historyProject.id}/rollback`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('cicd_token') },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ commit_hash: hash })
                         });
+                        this.notify("Rollback initiated");
                         this.showHistoryModal = false;
-                        alert("Rollback initiated. Check logs for progress.");
-                    } finally { this.loading = false; }
+                    } catch (e) { }
                 },
 
                 // SETTINGS
-                async fetchSettings() {
-                    const res = await fetch('/api/settings', { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
-                    this.settings = await res.json();
-                },
-
                 async updateSettings() {
                     if (!confirm("Save and restart the orchestrator engine?")) return;
-                    this.loading = true;
-                    await fetch('/api/settings', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('cicd_token') },
-                        body: JSON.stringify(this.settings)
-                    });
-                    alert("Settings saved. Reconnecting in 5 seconds...");
-                    setTimeout(() => location.reload(), 5000);
+                    try {
+                        await this.apiCall('/api/settings', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.settings)
+                        });
+                        this.notify("Settings saved. Reconnecting in 5 seconds...");
+                        setTimeout(() => location.reload(), 5000);
+                    } catch (e) { }
                 },
 
                 // UTILS
                 calculateTotalCPU() {
-                    const nodeProjects = this.projects.filter(p => p.PublicIP === this.selectedIP);
-                    if (nodeProjects.length === 0) return 0;
-                    const sum = nodeProjects.reduce((acc, p) => acc + (p.cpu_percent || 0), 0);
-                    return (sum / nodeProjects.length).toFixed(1);
+                    if (this.projects.length === 0) return 0;
+                    const sum = this.projects.reduce((acc, p) => acc + (p.cpu_percent || 0), 0);
+                    return (sum / this.projects.length).toFixed(1);
                 },
 
                 getOldestUptime() {
@@ -1293,8 +1749,10 @@
 
                 closeModals() {
                     this.showCreateModal = false;
+                    this.showEditModal = false;
                     this.showSettingsModal = false;
                     this.showHistoryModal = false;
+                    this.showPortsModal = false;
                 }
             };
         }

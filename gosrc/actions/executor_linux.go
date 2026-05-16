@@ -4,8 +4,6 @@ package actions
 
 import (
 	"fmt"
-	"gosrc/parser"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,19 +111,6 @@ func getChildrenInGroup(pgid int) []int {
 		}
 	}
 	return children
-}
-
-// sendNotification sends a POST to the configured notify URL (Slack/Discord compatible)
-func sendNotification(cfg *parser.Config, msg string) {
-	if cfg.NotifyURL == "" {
-		return
-	}
-	payload := fmt.Sprintf(`{"text": "%s"}`, strings.ReplaceAll(msg, `"`, `\"`))
-	resp, err := http.Post(cfg.NotifyURL, "application/json", strings.NewReader(payload))
-	if err != nil {
-		return // Best effort, don't log errors for notification failures
-	}
-	resp.Body.Close()
 }
 
 // getProcessPorts returns TCP ports a specific PID is listening on (stub for now)

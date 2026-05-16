@@ -21,55 +21,57 @@ import (
 
 var (
 	sharedMongoClient *mongo.Client
-	mongoOnce         sync.Once
-	mongoInitErr      error
 	mongoMu           sync.Mutex
 	lastMongoURI      string
 )
 
-// getMongoClient returns a shared MongoDB client. Thread-safe via sync.Once.
+// getMongoClient returns a shared MongoDB client. Thread-safe.
 // If the URI changes (e.g., user updates settings), reconnects.
 func getMongoClient(uri string) (*mongo.Client, error) {
 	mongoMu.Lock()
 	defer mongoMu.Unlock()
 
-	// If URI changed, disconnect old client and reconnect
-	if sharedMongoClient != nil && lastMongoURI != uri {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		sharedMongoClient.Disconnect(ctx)
-		sharedMongoClient = nil
-		mongoOnce = sync.Once{} // Reset once so it re-runs
+	// If already connected to the SAME URI, return it
+	if sharedMongoClient != nil && lastMongoURI == uri {
+		return sharedMongoClient, nil
 	}
 
-	mongoOnce.Do(func() {
+	// If URI changed or first connect, disconnect old client and reconnect
+	if sharedMongoClient != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		_ = sharedMongoClient.Disconnect(ctx)
+		sharedMongoClient = nil
+	}
 
-		clientOpts := options.Client().ApplyURI(uri).
-			SetMaxPoolSize(10).
-			SetMinPoolSize(1).
-			SetMaxConnIdleTime(5 * time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-		client, err := mongo.Connect(ctx, clientOpts)
-		if err != nil {
-			mongoInitErr = fmt.Errorf("failed to connect to MongoDB: %w", err)
-			return
-		}
+	// Production Hardened Options (IF-1)
+	clientOpts := options.Client().ApplyURI(uri).
+		SetMaxPoolSize(50).
+		SetMinPoolSize(2).
+		SetMaxConnIdleTime(10 * time.Minute).
+		SetConnectTimeout(20 * time.Second).
+		SetServerSelectionTimeout(20 * time.Second).
+		SetSocketTimeout(60 * time.Second).
+		SetHeartbeatInterval(10 * time.Second).
+		SetAppName("cicd-fleet-node")
 
-		// Verify connection
-		if err := client.Ping(ctx, nil); err != nil {
-			mongoInitErr = fmt.Errorf("MongoDB ping failed: %w", err)
-			client.Disconnect(ctx)
-			return
-		}
+	client, err := mongo.Connect(ctx, clientOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initiate MongoDB connection: %w", err)
+	}
 
-		sharedMongoClient = client
-		lastMongoURI = uri
-		mongoInitErr = nil
-	})
+	// Verify connection immediately
+	if err := client.Ping(ctx, nil); err != nil {
+		_ = client.Disconnect(ctx)
+		return nil, fmt.Errorf("MongoDB connection failed ping: %w", err)
+	}
 
-	return sharedMongoClient, mongoInitErr
+	sharedMongoClient = client
+	lastMongoURI = uri
+	return sharedMongoClient, nil
 }
 
 // RegisterToMongo syncs the local configuration to your centralized MongoDB
@@ -84,7 +86,7 @@ func RegisterToMongo(cfg *parser.Config) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	collection := client.Database("cicd").Collection("projects")
@@ -126,7 +128,7 @@ func UpdateCommitHash(cfg *parser.Config, commitHash string) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	collection := client.Database("cicd").Collection("projects")
@@ -154,16 +156,33 @@ func UpdateCommitHash(cfg *parser.Config, commitHash string) error {
 }
 
 // WatchChanges sits in a background loop and waits for Dashboard updates.
-// IF-5: Uses safe type assertions with comma-ok idiom.
 func WatchChanges(cfg *parser.Config, callback func(*parser.Config)) {
 	if cfg.MongoDBURI == "" {
 		return
 	}
 
+	backoff := 2 * time.Second
+	for {
+		err := startWatchLoop(cfg, callback)
+		if err != nil {
+			logger.Error(fmt.Sprintf("📡 MongoDB Watch error: %v. Retrying in %v...", err, backoff), cfg)
+			time.Sleep(backoff)
+			// Simple exponential backoff
+			backoff *= 2
+			if backoff > 60*time.Second {
+				backoff = 60 * time.Second
+			}
+			continue
+		}
+		// If it returns nil, it means it finished normally (unlikely for a watch)
+		backoff = 2 * time.Second
+	}
+}
+
+func startWatchLoop(cfg *parser.Config, callback func(*parser.Config)) error {
 	client, err := getMongoClient(cfg.MongoDBURI)
 	if err != nil {
-		logger.Error("Failed to connect to MongoDB for watch: "+err.Error(), cfg)
-		return
+		return err
 	}
 
 	ctx := context.Background()
@@ -176,15 +195,14 @@ func WatchChanges(cfg *parser.Config, callback func(*parser.Config)) {
 	opts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
 	stream, err := collection.Watch(ctx, pipeline, opts)
 	if err != nil {
-		logger.Error("Failed to start MongoDB Watch Stream: "+err.Error(), cfg)
-		return
+		return fmt.Errorf("failed to start change stream: %w", err)
 	}
 	defer stream.Close(ctx)
-	logger.Info("📡 Watching MongoDB for remote config changes...", cfg)
+
+	logger.Info("📡 MongoDB Change Stream active", cfg)
 	for stream.Next(ctx) {
 		var event bson.M
 		if err := stream.Decode(&event); err == nil {
-			// IF-5: Safe type assertions — skip if types don't match
 			fullDoc, ok := event["fullDocument"].(bson.M)
 			if !ok {
 				continue
@@ -211,6 +229,7 @@ func WatchChanges(cfg *parser.Config, callback func(*parser.Config)) {
 			callback(appCfg)
 		}
 	}
+	return stream.Err()
 }
 
 // GetUniqueServerIPs retrieves all unique public_ips from the centralized registry

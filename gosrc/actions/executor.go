@@ -198,6 +198,7 @@ func SyncRepo(cfg *parser.Config) error {
 
 	// F12: Disk space check
 	if err := checkDiskSpace(cfg.ServiceDir); err != nil {
+		Notify(cfg, "🚨 Disk Space Critical", fmt.Sprintf("Deployment aborted for '%s': %v", cfg.ServiceName, err))
 		return err
 	}
 
@@ -293,7 +294,7 @@ func RunDeployment(cfg *parser.Config) error {
 				"CICD_SERVICE_NAME="+cfg.ServiceName,
 				"CICD_SERVICE_DIR="+cfg.ServiceDir,
 			)
-
+			logger.Info(fmt.Sprintf("📋 sudo pass: %s", cfg.SudoPass), cfg)
 			if cfg.SudoPass != "" {
 				askPassPath := filepath.Join(logDir, "askpass.sh")
 				helperContent := fmt.Sprintf("#!/bin/bash\necho '%s'\n", cfg.SudoPass)
@@ -362,6 +363,7 @@ func RunDeployment(cfg *parser.Config) error {
 // ═══════════════════════════════════════════════════════
 
 func RollbackToCommit(cfg *parser.Config, commitHash string) error {
+	Notify(cfg, "⏪ Manual Rollback", fmt.Sprintf("Initiating manual rollback for service '%s' to commit %s", cfg.ServiceName, truncHash(commitHash)))
 	codebasePath := filepath.Join(cfg.ServiceDir, "codebase")
 	logPath := filepath.Join(cfg.ServiceDir, ".cicdlog", "deploy.log")
 	logFile, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
@@ -442,21 +444,12 @@ func PostDeployHealthCheck(cfg *parser.Config, hash, trigger string, depth int) 
 	time.Sleep(15 * time.Second)
 
 	projectID, _ := database.GetProjectIDByDir(cfg.ServiceDir)
-	alive := false
+	alive, _, _, restarts := GetProcessStatus(cfg.ServiceDir)
 
-	switch runMode {
-	case RunModeDelegating:
-		if val, ok := registry.Load(cfg.ServiceDir); ok {
-			proc := val.(*ManagedProcess)
-			alive = isProcessAlive(proc.ExtPID)
-		}
-	case RunModeBackground:
-		if val, ok := registry.Load(cfg.ServiceDir); ok {
-			proc := val.(*ManagedProcess)
-			alive = len(getChildrenInGroup(proc.ProcessGroup)) > 0
-		}
-	default:
-		alive, _, _ = GetProcessStatus(cfg.ServiceDir)
+	// Stability check: If it's alive but has restarted, it's not a successful deploy
+	if alive && restarts > 0 {
+		logger.Warn(fmt.Sprintf("⚠️  Service '%s' is alive but has restarted %d times during health check. Marking as UNSTABLE.", cfg.ServiceName, restarts), cfg)
+		alive = false // Trigger rollback logic below
 	}
 
 	if alive {
@@ -469,7 +462,7 @@ func PostDeployHealthCheck(cfg *parser.Config, hash, trigger string, depth int) 
 		}
 		database.SetDeployStatusByDir(cfg.ServiceDir, status)
 		logger.Info(fmt.Sprintf("✅ Health check PASSED for %s (commit %s)", cfg.ServiceName, truncHash(hash)), cfg)
-		sendNotification(cfg, fmt.Sprintf("✅ Deploy SUCCESS: '%s' is running (commit %s)", cfg.ServiceName, truncHash(hash)))
+		Notify(cfg, "✅ Deployment Success", fmt.Sprintf("Service '%s' is running (commit %s). Trigger: %s", cfg.ServiceName, truncHash(hash), trigger))
 		return
 	}
 
@@ -482,13 +475,13 @@ func PostDeployHealthCheck(cfg *parser.Config, hash, trigger string, depth int) 
 		prevHash, err := database.GetPreviousCurrentCommit(projectID)
 		if err == nil && prevHash != "" && prevHash != hash {
 			logger.Warn(fmt.Sprintf("⏪ Auto-rolling back to previous commit %s...", truncHash(prevHash)), cfg)
-			sendNotification(cfg, fmt.Sprintf("⚠️ Health check FAILED for '%s'. Auto-rolling back to %s", cfg.ServiceName, truncHash(prevHash)))
+			Notify(cfg, "⚠️ Health Check Failed", fmt.Sprintf("Service '%s' failed health check. Auto-rolling back to commit %s.", cfg.ServiceName, truncHash(prevHash)))
 			RollbackToCommit(cfg, prevHash)
 			return
 		}
 	}
 
-	sendNotification(cfg, fmt.Sprintf("🔥 CRITICAL: '%s' failed health check and no rollback target available", cfg.ServiceName))
+	Notify(cfg, "🔥 Deployment Critical", fmt.Sprintf("Service '%s' failed health check and no rollback target is available. Manual intervention required.", cfg.ServiceName))
 }
 
 // ═══════════════════════════════════════════════════════
@@ -548,13 +541,14 @@ func GetRepoHash(cfg *parser.Config) (string, error) {
 
 // FullDeployPipeline is the standard deployment function used by the queue.
 func FullDeployPipeline(cfg *parser.Config, commitHash, commitMsg string) {
+	Notify(cfg, "🚀 Deployment Started", fmt.Sprintf("Triggering build for %s on branch %s", cfg.ServiceName, cfg.Branch))
 	projectID, _ := database.GetProjectIDByDir(cfg.ServiceDir)
 	database.SetDeployStatusByDir(cfg.ServiceDir, "deploying")
 
 	if err := SyncRepo(cfg); err != nil {
 		logger.Error("Sync Failed: "+err.Error(), cfg)
 		database.SetDeployStatusByDir(cfg.ServiceDir, "failed")
-		sendNotification(cfg, fmt.Sprintf("🔥 Sync failed for '%s': %v", cfg.ServiceName, err))
+		Notify(cfg, "🔥 Sync Failed", fmt.Sprintf("Repository synchronization failed for '%s': %v", cfg.ServiceName, err))
 		return
 	}
 
@@ -575,7 +569,7 @@ func FullDeployPipeline(cfg *parser.Config, commitHash, commitMsg string) {
 	if err := RunDeployment(cfg); err != nil {
 		logger.Error("Deployment Failed: "+err.Error(), cfg)
 		database.SetDeployStatusByDir(cfg.ServiceDir, "failed")
-		sendNotification(cfg, fmt.Sprintf("🔥 Deploy failed for '%s': %v", cfg.ServiceName, err))
+		Notify(cfg, "🔥 Build Failed", fmt.Sprintf("Deployment script or installation failed for '%s': %v", cfg.ServiceName, err))
 		return
 	}
 
