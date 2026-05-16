@@ -102,7 +102,7 @@ func main() {
 			fmt.Println("  SETUP TOKEN: " + token)
 			fmt.Println("  Paste this in the dashboard login. Expires in 15 min.")
 			fmt.Println("  Or run: cicd token")
-			fmt.Println("═══════════════════════════════════════════════════════\n")
+			fmt.Println("═══════════════════════════════════════════════════════")
 		}
 	}
 
@@ -127,16 +127,7 @@ func main() {
 			logger.Info(fmt.Sprintf("🛠️  Auto-deploying %s...", appCfg.ServiceName), appCfg)
 
 			// EC-3: Use the queue so webhooks during resurrection are handled correctly
-			actions.EnqueueDeployment(appCfg, "", "", func(cfg *parser.Config, hash, msg string) {
-				if err := actions.SyncRepo(cfg); err != nil {
-					logger.Error("Auto-sync Failed: "+err.Error(), cfg)
-					return
-				}
-				if err := actions.RunDeployment(cfg); err != nil {
-					logger.Error("Auto-deployment Failed: "+err.Error(), cfg)
-					return
-				}
-			})
+			actions.EnqueueDeployment(appCfg, "", "", actions.FullDeployPipeline)
 		}(p)
 	}
 

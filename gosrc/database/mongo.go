@@ -35,7 +35,7 @@ func getMongoClient(uri string) (*mongo.Client, error) {
 
 	// If URI changed, disconnect old client and reconnect
 	if sharedMongoClient != nil && lastMongoURI != uri {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		sharedMongoClient.Disconnect(ctx)
 		sharedMongoClient = nil
@@ -240,4 +240,31 @@ func GetUniqueServerIPs(cfg *parser.Config) ([]string, error) {
 		}
 	}
 	return ips, nil
+}
+
+func DeleteProjectFromMongo(cfg *parser.Config) ([]string, error) {
+	if cfg.MongoDBURI == "" {
+		return nil, nil
+	}
+
+	client, err := getMongoClient(cfg.MongoDBURI)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	collection := client.Database("cicd").Collection("projects")
+	_, err = collection.DeleteOne(ctx, bson.M{
+		"repo_url":    cfg.RepoURL,
+		"branch":      cfg.Branch,
+		"serviceName": cfg.ServiceName,
+	})
+	if err != nil {
+		logger.Error("Failed to delete project from MongoDB: "+err.Error(), cfg)
+		return nil, err
+	}
+	logger.Info("🗑️  Project deleted from MongoDB", cfg)
+	return nil, nil
 }

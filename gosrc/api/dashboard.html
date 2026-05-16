@@ -7,7 +7,9 @@
     <title>🛰️ CICD Orchestrator | Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
     <style>
         :root {
             --bg-color: #09090b;
@@ -22,7 +24,7 @@
             font-family: 'Plus Jakarta Sans', sans-serif;
             background-color: var(--bg-color);
             color: #f4f4f5;
-            background-image: 
+            background-image:
                 radial-gradient(at 0% 0%, rgba(34, 211, 238, 0.05) 0px, transparent 50%),
                 radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.05) 0px, transparent 50%);
             background-attachment: fixed;
@@ -56,20 +58,46 @@
             scrollbar-color: #27272a #000;
         }
 
-        .terminal::-webkit-scrollbar { width: 6px; }
-        .terminal::-webkit-scrollbar-track { background: #000; }
-        .terminal::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+        .terminal::-webkit-scrollbar {
+            width: 6px;
+        }
 
-        .glow-cyan { filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.4)); }
-        .glow-rose { filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.4)); }
+        .terminal::-webkit-scrollbar-track {
+            background: #000;
+        }
 
-        [x-cloak] { display: none !important; }
+        .terminal::-webkit-scrollbar-thumb {
+            background: #27272a;
+            border-radius: 10px;
+        }
+
+        .glow-cyan {
+            filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.4));
+        }
+
+        .glow-rose {
+            filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.4));
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
 
         @keyframes pulse-slow {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
         }
-        .animate-pulse-slow { animation: pulse-slow 3s infinite; }
+
+        .animate-pulse-slow {
+            animation: pulse-slow 3s infinite;
+        }
 
         .progress-bar {
             height: 4px;
@@ -77,6 +105,7 @@
             border-radius: 2px;
             overflow: hidden;
         }
+
         .progress-fill {
             height: 100%;
             transition: width 0.5s ease-out;
@@ -89,50 +118,62 @@
     <!-- AUTHENTICATION OVERLAY -->
     <template x-if="!isAuthenticated">
         <div class="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/80 backdrop-blur-xl">
-            <div class="glass p-12 rounded-[2.5rem] w-full max-w-md border border-white/10 shadow-2xl relative overflow-hidden">
+            <div
+                class="glass p-12 rounded-[2.5rem] w-full max-w-md border border-white/10 shadow-2xl relative overflow-hidden">
                 <!-- Background Decoration -->
                 <div class="absolute -top-24 -right-24 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl"></div>
                 <div class="absolute -bottom-24 -left-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl"></div>
 
                 <div class="relative z-10">
                     <div class="flex flex-col items-center mb-10">
-                        <div class="w-16 h-16 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-cyan-500/20 mb-6">
+                        <div
+                            class="w-16 h-16 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-cyan-500/20 mb-6">
                             <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 10V3L4 14h7v7l9-11h-7z" />
                             </svg>
                         </div>
-                        <h1 class="text-3xl font-black tracking-tighter text-white">ORCHESTRATOR <span class="text-zinc-500">V1</span></h1>
+                        <h1 class="text-3xl font-black tracking-tighter text-white">ORCHESTRATOR <span
+                                class="text-zinc-500">V1</span></h1>
                         <p class="text-zinc-500 text-sm mt-2 font-medium">Production Deployment Control</p>
                     </div>
 
                     <div class="space-y-6" x-show="authMode === 'email'">
                         <div>
-                            <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">Admin Identity</label>
+                            <label
+                                class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">Admin
+                                Identity</label>
                             <input x-model="loginEmail" type="email" placeholder="admin@yourdomain.com"
                                 class="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-medium">
                         </div>
                         <button @click="sendMagicLink()" :disabled="loading"
                             class="w-full bg-white text-black hover:bg-zinc-200 py-4 rounded-2xl font-bold transition-all shadow-xl flex items-center justify-center gap-3">
                             <span x-show="!loading">Receive Magic Link</span>
-                            <span x-show="loading" class="animate-spin border-2 border-zinc-400 border-t-black rounded-full w-5 h-5"></span>
+                            <span x-show="loading"
+                                class="animate-spin border-2 border-zinc-400 border-t-black rounded-full w-5 h-5"></span>
                         </button>
-                        <button @click="authMode = 'token'" class="w-full text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">
+                        <button @click="authMode = 'token'"
+                            class="w-full text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">
                             Use Setup Token
                         </button>
                     </div>
 
                     <div class="space-y-6" x-show="authMode === 'token'">
                         <div>
-                            <label class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">Setup Token</label>
+                            <label
+                                class="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">Setup
+                                Token</label>
                             <input x-model="setupToken" type="text" placeholder="Paste 32-char token here..."
                                 class="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono text-sm tracking-tighter">
                         </div>
                         <button @click="tokenLogin()" :disabled="loading"
                             class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-4 rounded-2xl font-bold transition-all shadow-xl shadow-purple-900/20 flex items-center justify-center gap-3">
                             <span x-show="!loading">Authenticate Node</span>
-                            <span x-show="loading" class="animate-spin border-2 border-white border-t-transparent rounded-full w-5 h-5"></span>
+                            <span x-show="loading"
+                                class="animate-spin border-2 border-white border-t-transparent rounded-full w-5 h-5"></span>
                         </button>
-                        <button @click="authMode = 'email'" class="w-full text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">
+                        <button @click="authMode = 'email'"
+                            class="w-full text-zinc-500 hover:text-white text-xs font-bold uppercase tracking-widest transition">
                             Return to Magic Link
                         </button>
                     </div>
@@ -147,21 +188,25 @@
 
     <!-- DASHBOARD SHELL -->
     <div x-if="isAuthenticated" class="min-h-screen flex flex-col">
-        
+
         <!-- TOP NAV -->
         <nav class="border-b border-white/5 bg-zinc-950/50 sticky top-0 z-40 backdrop-blur-md">
             <div class="max-w-[1600px] mx-auto px-6 h-20 flex items-center justify-between">
                 <div class="flex items-center gap-4">
-                    <div class="w-10 h-10 bg-cyan-500/10 rounded-xl flex items-center justify-center border border-cyan-500/20">
+                    <div
+                        class="w-10 h-10 bg-cyan-500/10 rounded-xl flex items-center justify-center border border-cyan-500/20">
                         <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
                     </div>
                     <div>
-                        <h2 class="font-bold text-lg tracking-tight">CICD <span class="text-zinc-500">ORCHESTRATOR</span></h2>
+                        <h2 class="font-bold text-lg tracking-tight">CICD <span
+                                class="text-zinc-500">ORCHESTRATOR</span></h2>
                         <div class="flex items-center gap-1.5">
                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span class="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Telemetry Active</span>
+                            <span class="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Telemetry
+                                Active</span>
                         </div>
                     </div>
                 </div>
@@ -169,13 +214,16 @@
                 <div class="flex items-center gap-6">
                     <div class="hidden md:flex items-center gap-8 text-sm font-semibold">
                         <a href="#" class="text-white hover:text-cyan-400 transition">Dashboard</a>
-                        <a href="#" @click="fetchSettings(); showSettingsModal = true" class="text-zinc-400 hover:text-white transition">Infrastructure</a>
-                        <a href="#" @click="showPortsModal = true; fetchPorts()" class="text-zinc-400 hover:text-white transition">Port Mapping</a>
+                        <a href="#" @click="fetchSettings(); showSettingsModal = true"
+                            class="text-zinc-400 hover:text-white transition">Infrastructure</a>
+                        <a href="#" @click="showPortsModal = true; fetchPorts()"
+                            class="text-zinc-400 hover:text-white transition">Port Mapping</a>
                     </div>
                     <div class="h-8 w-[1px] bg-white/5 hidden md:block"></div>
                     <button @click="logout()" class="text-zinc-500 hover:text-rose-400 transition p-2">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                         </svg>
                     </button>
                 </div>
@@ -183,12 +231,13 @@
         </nav>
 
         <main class="flex-1 max-w-[1600px] mx-auto w-full p-6 grid grid-cols-12 gap-6">
-            
+
             <!-- LEFT: SERVER TREE -->
             <aside class="col-span-12 lg:col-span-3 space-y-6">
                 <div class="flex items-center justify-between px-2">
                     <h3 class="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Deployment Fleet</h3>
-                    <span class="bg-zinc-900 text-zinc-400 text-[10px] px-2 py-0.5 rounded-md font-bold" x-text="fleet.length + ' Nodes'"></span>
+                    <span class="bg-zinc-900 text-zinc-400 text-[10px] px-2 py-0.5 rounded-md font-bold"
+                        x-text="fleet.length + ' Nodes'"></span>
                 </div>
                 <div class="space-y-3">
                     <template x-for="ip in fleet">
@@ -196,14 +245,19 @@
                             :class="selectedIP === ip ? 'bg-cyan-500/10 border-cyan-500/50 ring-1 ring-cyan-500/20' : 'bg-zinc-900/40 border-white/5 hover:border-white/10 hover:bg-zinc-900/60'"
                             class="w-full p-5 rounded-2xl border flex items-center justify-between transition-all group">
                             <div class="flex items-center gap-4">
-                                <div :class="selectedIP === ip ? 'bg-cyan-500' : 'bg-zinc-800'" class="w-2 h-2 rounded-full shadow-sm"></div>
+                                <div :class="selectedIP === ip ? 'bg-cyan-500' : 'bg-zinc-800'"
+                                    class="w-2 h-2 rounded-full shadow-sm"></div>
                                 <div class="text-left">
-                                    <p :class="selectedIP === ip ? 'text-white' : 'text-zinc-400'" class="font-bold text-sm" x-text="ip"></p>
-                                    <p class="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mt-0.5">Primary Node</p>
+                                    <p :class="selectedIP === ip ? 'text-white' : 'text-zinc-400'"
+                                        class="font-bold text-sm" x-text="ip"></p>
+                                    <p class="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mt-0.5">
+                                        Primary Node</p>
                                 </div>
                             </div>
-                            <svg class="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                            <svg class="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 5l7 7-7 7" />
                             </svg>
                         </button>
                     </template>
@@ -213,18 +267,26 @@
                 <div class="glass p-6 rounded-3xl border border-white/5 mt-8">
                     <h4 class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-6">Master Controls</h4>
                     <div class="grid grid-cols-2 gap-3">
-                        <button @click="showCreateModal = true" class="p-4 bg-zinc-900/60 rounded-2xl border border-white/5 hover:border-cyan-500/50 transition-all group">
-                            <div class="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        <button @click="showCreateModal = true"
+                            class="p-4 bg-zinc-900/60 rounded-2xl border border-white/5 hover:border-cyan-500/50 transition-all group">
+                            <div
+                                class="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                                 </svg>
                             </div>
                             <p class="text-[10px] font-black text-white uppercase">New App</p>
                         </button>
-                        <button @click="viewSystemLogs(selectedIP)" :disabled="!selectedIP" class="p-4 bg-zinc-900/60 rounded-2xl border border-white/5 hover:border-purple-500/50 transition-all group disabled:opacity-50">
-                            <div class="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <button @click="viewSystemLogs(selectedIP)" :disabled="!selectedIP"
+                            class="p-4 bg-zinc-900/60 rounded-2xl border border-white/5 hover:border-purple-500/50 transition-all group disabled:opacity-50">
+                            <div
+                                class="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                 </svg>
                             </div>
                             <p class="text-[10px] font-black text-white uppercase">Sys Log</p>
@@ -235,17 +297,22 @@
 
             <!-- CENTER: PROJECT GRID & TELEMETRY -->
             <section class="col-span-12 lg:col-span-9 space-y-6">
-                
+
                 <template x-if="!selectedIP">
-                    <div class="h-[600px] glass rounded-[3rem] border border-white/5 flex flex-col items-center justify-center text-center p-12">
-                        <div class="w-24 h-24 bg-zinc-900/80 rounded-full flex items-center justify-center mb-8 border border-white/5 relative">
+                    <div
+                        class="h-[600px] glass rounded-[3rem] border border-white/5 flex flex-col items-center justify-center text-center p-12">
+                        <div
+                            class="w-24 h-24 bg-zinc-900/80 rounded-full flex items-center justify-center mb-8 border border-white/5 relative">
                             <div class="absolute inset-0 bg-cyan-500/20 blur-2xl animate-pulse"></div>
-                            <svg class="w-10 h-10 text-cyan-400 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                            <svg class="w-10 h-10 text-cyan-400 relative z-10" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                             </svg>
                         </div>
                         <h3 class="text-3xl font-black tracking-tight mb-4">Awaiting Node Selection</h3>
-                        <p class="text-zinc-500 max-w-sm font-medium">Connect to an active deployment node to view real-time telemetry and project status.</p>
+                        <p class="text-zinc-500 max-w-sm font-medium">Connect to an active deployment node to view
+                            real-time telemetry and project status.</p>
                     </div>
                 </template>
 
@@ -254,43 +321,54 @@
                         <!-- HEADER STATS -->
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div class="glass p-6 rounded-[2rem] border border-white/5">
-                                <p class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Total Load</p>
+                                <p class="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-2">Node
+                                    Workload</p>
                                 <div class="flex items-end gap-2">
-                                    <span class="text-3xl font-black text-white" x-text="calculateTotalCPU() + '%'"></span>
+                                    <span class="text-3xl font-black text-white"
+                                        x-text="calculateTotalCPU() + '%'"></span>
                                     <span class="text-emerald-500 text-[10px] font-bold mb-1.5 uppercase">Avg CPU</span>
                                 </div>
-                                <div class="progress-bar mt-4">
-                                    <div class="progress-fill bg-cyan-500" :style="'width: ' + calculateTotalCPU() + '%'"></div>
+                                <div class="progress-bar mt-4 bg-white/5">
+                                    <div class="progress-fill bg-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.5)]"
+                                        :style="'width: ' + calculateTotalCPU() + '%'"></div>
                                 </div>
                             </div>
                             <div class="glass p-6 rounded-[2rem] border border-white/5">
-                                <p class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Active Services</p>
+                                <p class="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-2">Node
+                                    Services</p>
                                 <div class="flex items-end gap-2">
-                                    <span class="text-3xl font-black text-white" x-text="projects.filter(p => p.is_running).length"></span>
-                                    <span class="text-zinc-500 text-[10px] font-bold mb-1.5 uppercase">/ <span x-text="projects.length"></span> Total</span>
+                                    <span class="text-3xl font-black text-white"
+                                        x-text="projects.filter(p => p.PublicIP === selectedIP && p.is_running).length"></span>
+                                    <span class="text-zinc-500 text-[10px] font-bold mb-1.5 uppercase">/ <span
+                                            x-text="projects.filter(p => p.PublicIP === selectedIP).length"></span>
+                                        Active</span>
                                 </div>
-                                <div class="progress-bar mt-4">
-                                    <div class="progress-fill bg-purple-500" :style="'width: ' + (projects.filter(p => p.is_running).length / projects.length * 100) + '%'"></div>
+                                <div class="progress-bar mt-4 bg-white/5">
+                                    <div class="progress-fill bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]"
+                                        :style="'width: ' + (projects.filter(p => p.PublicIP === selectedIP).length > 0 ? (projects.filter(p => p.PublicIP === selectedIP && p.is_running).length / projects.filter(p => p.PublicIP === selectedIP).length * 100) : 0) + '%'">
+                                    </div>
                                 </div>
                             </div>
                             <div class="glass p-6 rounded-[2rem] border border-white/5">
-                                <p class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Node Uptime</p>
+                                <p class="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Node
+                                    Uptime</p>
                                 <div class="flex items-end gap-2">
                                     <span class="text-3xl font-black text-white" x-text="getOldestUptime()"></span>
                                 </div>
                                 <div class="flex items-center gap-1.5 mt-4">
                                     <span class="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
-                                    <span class="text-[10px] font-black text-zinc-500 uppercase">System Peak Stability</span>
+                                    <span class="text-[10px] font-black text-zinc-500 uppercase">System Peak
+                                        Stability</span>
                                 </div>
                             </div>
                         </div>
 
                         <!-- PROJECT GRID -->
                         <div class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
-                            <template x-for="p in projects">
-                                <div class="glass p-6 rounded-[2.5rem] border border-white/5 group relative transition-all" 
+                            <template x-for="p in projects.filter(proj => proj.PublicIP === selectedIP)">
+                                <div class="glass p-6 rounded-[2.5rem] border border-white/5 group relative transition-all cursor-pointer hover:bg-white/[0.02]"
                                     @click="viewLogs(p)">
-                                    
+
                                     <!-- Status Badge -->
                                     <div class="absolute top-6 right-6 flex items-center gap-2">
                                         <div :class="p.is_running ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'"
@@ -298,16 +376,19 @@
                                             <span x-text="p.is_running ? 'Online' : 'Offline'"></span>
                                         </div>
                                         <template x-if="p.IsPinned">
-                                            <div class="bg-amber-500/20 text-amber-400 p-1 rounded-lg border border-amber-500/20 glow-amber" title="Pinned: No deployments">
+                                            <div class="bg-amber-500/20 text-amber-400 p-1 rounded-lg border border-amber-500/20 glow-amber"
+                                                title="Pinned: No deployments">
                                                 <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M4.49 3a.75.75 0 00-.51 1.307l.11.103v5.183l-.61 1.222a.75.75 0 00.671 1.085h2.999v4.35a.75.75 0 001.28.53l4-4a.75.75 0 00-.53-1.28H8.91l.61-1.222V4.41l.11-.103A.75.75 0 009.12 3H4.49z" />
+                                                    <path
+                                                        d="M4.49 3a.75.75 0 00-.51 1.307l.11.103v5.183l-.61 1.222a.75.75 0 00.671 1.085h2.999v4.35a.75.75 0 001.28.53l4-4a.75.75 0 00-.53-1.28H8.91l.61-1.222V4.41l.11-.103A.75.75 0 009.12 3H4.49z" />
                                                 </svg>
                                             </div>
                                         </template>
                                     </div>
 
                                     <div class="mb-6">
-                                        <h4 class="text-xl font-black text-white mb-1 group-hover:text-cyan-400 transition-colors" x-text="p.ServiceName"></h4>
+                                        <h4 class="text-xl font-black text-white mb-1 group-hover:text-cyan-400 transition-colors"
+                                            x-text="p.ServiceName"></h4>
                                         <div class="flex items-center gap-2 text-[10px] font-bold text-zinc-500">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
@@ -320,57 +401,92 @@
                                     <!-- TELEMETRY BARS -->
                                     <div class="space-y-4 mb-8">
                                         <div>
-                                            <div class="flex justify-between text-[9px] font-black uppercase text-zinc-500 mb-1.5">
+                                            <div
+                                                class="flex justify-between text-[9px] font-black uppercase text-zinc-500 mb-1.5">
                                                 <span>CPU Compute</span>
                                                 <span x-text="p.cpu_percent.toFixed(1) + '%'"></span>
                                             </div>
                                             <div class="progress-bar">
-                                                <div class="progress-fill" 
+                                                <div class="progress-fill"
                                                     :class="p.cpu_percent > 80 ? 'bg-rose-500' : 'bg-cyan-500'"
                                                     :style="'width: ' + p.cpu_percent + '%'"></div>
                                             </div>
                                         </div>
                                         <div>
-                                            <div class="flex justify-between text-[9px] font-black uppercase text-zinc-500 mb-1.5">
+                                            <div
+                                                class="flex justify-between text-[9px] font-black uppercase text-zinc-500 mb-1.5">
                                                 <span>Memory Usage</span>
                                                 <span x-text="p.memory_mb.toFixed(0) + ' MB'"></span>
                                             </div>
                                             <div class="progress-bar">
-                                                <div class="progress-fill bg-purple-500" 
-                                                    :style="'width: ' + Math.min((p.memory_mb / 2048) * 100, 100) + '%'"></div>
+                                                <div class="progress-fill bg-purple-500"
+                                                    :style="'width: ' + Math.min((p.memory_mb / 2048) * 100, 100) + '%'">
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
                                     <!-- PROJECT DETAILS -->
-                                    <div class="grid grid-cols-2 gap-4 mb-8">
+                                    <div class="grid grid-cols-2 gap-4 mb-4">
                                         <div class="bg-zinc-900/60 p-3 rounded-2xl border border-white/5">
                                             <p class="text-[9px] font-black text-zinc-600 uppercase mb-1">PID</p>
-                                            <p class="text-xs font-mono font-bold text-zinc-300" x-text="p.pid || '---'"></p>
+                                            <p class="text-xs font-mono font-bold text-zinc-300"
+                                                x-text="p.pid || '---'"></p>
                                         </div>
                                         <div class="bg-zinc-900/60 p-3 rounded-2xl border border-white/5">
                                             <p class="text-[9px] font-black text-zinc-600 uppercase mb-1">Ports</p>
-                                            <p class="text-xs font-mono font-bold text-emerald-400" x-text="p.ports?.join(', ') || '---'"></p>
+                                            <p class="text-xs font-mono font-bold text-emerald-400"
+                                                x-text="p.ports && p.ports.length ? p.ports.join(', ') : '---'"></p>
                                         </div>
+                                    </div>
+
+                                    <!-- LAST COMMIT -->
+                                    <div class="bg-zinc-900/40 rounded-xl px-3 py-2 mb-6" x-show="p.LastCommitHash">
+                                        <p class="text-[9px] font-black text-zinc-600 uppercase mb-1">Last Commit</p>
+                                        <p class="text-[10px] font-mono text-cyan-400 truncate"
+                                            x-text="'#' + (p.LastCommitHash || '').substring(0, 8)"></p>
+                                        <p class="text-[10px] text-zinc-500 truncate mt-0.5"
+                                            x-text="p.LastCommitMsg || ''"></p>
                                     </div>
 
                                     <!-- ACTIONS -->
                                     <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                                        <button @click.stop="viewHistory(p)" class="flex-1 bg-zinc-800 hover:bg-zinc-700 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">History</button>
-                                        <button @click.stop="togglePin(p)" :class="p.IsPinned ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-500 bg-zinc-800'" class="px-3 rounded-xl transition-colors">
-                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4.49 3a.75.75 0 00-.51 1.307l.11.103v5.183l-.61 1.222a.75.75 0 00.671 1.085h2.999v4.35a.75.75 0 001.28.53l4-4a.75.75 0 00-.53-1.28H8.91l.61-1.222V4.41l.11-.103A.75.75 0 009.12 3H4.49z" /></svg>
+                                        <button @click.stop="viewHistory(p)"
+                                            class="flex-1 bg-zinc-800 hover:bg-zinc-700 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">History</button>
+                                        <button @click.stop="togglePin(p)"
+                                            :class="p.IsPinned ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-500 bg-zinc-800'"
+                                            class="px-3 rounded-xl transition-colors">
+                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                <path
+                                                    d="M4.49 3a.75.75 0 00-.51 1.307l.11.103v5.183l-.61 1.222a.75.75 0 00.671 1.085h2.999v4.35a.75.75 0 001.28.53l4-4a.75.75 0 00-.53-1.28H8.91l.61-1.222V4.41l.11-.103A.75.75 0 009.12 3H4.49z" />
+                                            </svg>
                                         </button>
-                                        <button @click.stop="redeployProject(p)" class="flex-1 bg-cyan-600 hover:bg-cyan-500 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">Deploy</button>
+                                        <button @click.stop="redeployProject(p)"
+                                            class="flex-1 bg-cyan-600 hover:bg-cyan-500 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">Deploy</button>
                                         <div class="relative" x-data="{ open: false }">
-                                            <button @click.stop="open = !open" class="bg-zinc-800 hover:bg-zinc-700 p-2.5 rounded-xl transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" /></svg>
+                                            <button @click.stop="open = !open"
+                                                class="bg-zinc-800 hover:bg-zinc-700 p-2.5 rounded-xl transition-colors">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor"
+                                                    viewBox="0 0 24 24">
+                                                    <path
+                                                        d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                                </svg>
                                             </button>
-                                            <div x-show="open" @click.away="open = false" class="absolute bottom-full right-0 mb-2 w-48 glass rounded-2xl border border-white/10 p-2 z-50">
-                                                <button @click="stopProject(p)" class="w-full text-left p-3 text-xs font-bold text-rose-500 hover:bg-rose-500/10 rounded-xl transition">Stop Process</button>
-                                                <button @click="forceReinstall(p)" class="w-full text-left p-3 text-xs font-bold text-amber-500 hover:bg-amber-500/10 rounded-xl transition">Force Reinstall</button>
-                                                <button @click="runCustomCommand(p)" class="w-full text-left p-3 text-xs font-bold text-zinc-400 hover:bg-white/5 rounded-xl transition">Run Bash Command</button>
+                                            <div x-show="open" @click.away="open = false"
+                                                class="absolute bottom-full right-0 mb-2 w-48 glass rounded-2xl border border-white/10 p-2 z-50">
+                                                <button @click="stopProject(p)"
+                                                    class="w-full text-left p-3 text-xs font-bold text-rose-500 hover:bg-rose-500/10 rounded-xl transition">Stop
+                                                    Process</button>
+                                                <button @click="forceReinstall(p)"
+                                                    class="w-full text-left p-3 text-xs font-bold text-amber-500 hover:bg-amber-500/10 rounded-xl transition">Force
+                                                    Reinstall</button>
+                                                <button @click="runCustomCommand(p)"
+                                                    class="w-full text-left p-3 text-xs font-bold text-zinc-400 hover:bg-white/5 rounded-xl transition">Run
+                                                    Bash Command</button>
                                                 <div class="h-[1px] bg-white/5 my-2"></div>
-                                                <button @click="deleteProject(p)" class="w-full text-left p-3 text-xs font-bold text-zinc-600 hover:text-white hover:bg-rose-600 rounded-xl transition">Delete Forever</button>
+                                                <button @click="deleteProject(p)"
+                                                    class="w-full text-left p-3 text-xs font-bold text-zinc-600 hover:text-white hover:bg-rose-600 rounded-xl transition">Delete
+                                                    Forever</button>
                                             </div>
                                         </div>
                                     </div>
@@ -384,21 +500,32 @@
                                 <div class="flex items-center gap-3">
                                     <div class="w-3 h-3 bg-cyan-500 rounded-full animate-pulse"></div>
                                     <h3 class="text-xs font-black uppercase tracking-widest text-zinc-400">
-                                        Live Stream: <span class="text-white" x-text="selectedProject ? selectedProject.ServiceName : 'System Logs'"></span>
+                                        Live Stream: <span class="text-white"
+                                            x-text="selectedProject ? selectedProject.ServiceName : 'System Logs'"></span>
                                     </h3>
                                 </div>
-                                <button @click="closeLogs()" class="text-[10px] font-black uppercase text-zinc-500 hover:text-white transition">Terminate Stream</button>
+                                <button @click="closeLogs()"
+                                    class="text-[10px] font-black uppercase text-zinc-500 hover:text-white transition">Terminate
+                                    Stream</button>
                             </div>
-                            <div class="terminal h-96 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
-                                <div class="absolute top-0 left-0 right-0 h-10 bg-zinc-950/80 backdrop-blur-md border-b border-white/5 flex items-center px-6 justify-between">
+                            <div
+                                class="terminal h-96 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
+                                <div
+                                    class="absolute top-0 left-0 right-0 h-10 bg-zinc-950/80 backdrop-blur-md border-b border-white/5 flex items-center px-6 justify-between">
                                     <div class="flex gap-1.5">
-                                        <div class="w-2.5 h-2.5 rounded-full bg-rose-500/30 border border-rose-500/50"></div>
-                                        <div class="w-2.5 h-2.5 rounded-full bg-amber-500/30 border border-amber-500/50"></div>
-                                        <div class="w-2.5 h-2.5 rounded-full bg-emerald-500/30 border border-emerald-500/50"></div>
+                                        <div class="w-2.5 h-2.5 rounded-full bg-rose-500/30 border border-rose-500/50">
+                                        </div>
+                                        <div
+                                            class="w-2.5 h-2.5 rounded-full bg-amber-500/30 border border-amber-500/50">
+                                        </div>
+                                        <div
+                                            class="w-2.5 h-2.5 rounded-full bg-emerald-500/30 border border-emerald-500/50">
+                                        </div>
                                     </div>
                                     <span class="text-[9px] font-mono text-zinc-600">STDOUT / STDERR</span>
                                 </div>
-                                <div class="pt-14 p-8 h-full overflow-y-auto text-xs leading-relaxed text-zinc-400" id="log-container">
+                                <div class="pt-14 p-8 h-full overflow-y-auto text-xs leading-relaxed text-zinc-400"
+                                    id="log-container">
                                     <pre class="font-mono" x-html="formatLogs(activeLogs)"></pre>
                                 </div>
                             </div>
@@ -409,33 +536,45 @@
         </main>
 
         <!-- COMMIT HISTORY MODAL -->
-        <div x-show="showHistoryModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition x-cloak>
+        <div x-show="showHistoryModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition
+            x-cloak>
             <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="showHistoryModal = false"></div>
-            <div class="glass p-10 rounded-[3rem] w-full max-w-4xl border border-white/10 shadow-2xl relative z-10 max-h-[85vh] flex flex-col">
+            <div
+                class="glass p-10 rounded-[3rem] w-full max-w-4xl border border-white/10 shadow-2xl relative z-10 max-h-[85vh] flex flex-col">
                 <div class="flex justify-between items-center mb-8">
                     <div>
-                        <h3 class="text-3xl font-black text-white tracking-tighter" x-text="historyProject?.ServiceName + ' Timeline'"></h3>
-                        <p class="text-zinc-500 text-sm mt-1 font-medium">Historical snapshots available for rollback.</p>
+                        <h3 class="text-3xl font-black text-white tracking-tighter"
+                            x-text="historyProject?.ServiceName + ' Timeline'"></h3>
+                        <p class="text-zinc-500 text-sm mt-1 font-medium">Historical snapshots available for rollback.
+                        </p>
                     </div>
                     <button @click="showHistoryModal = false" class="text-zinc-500 hover:text-white transition">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                     </button>
                 </div>
 
                 <div class="flex-1 overflow-y-auto pr-4 space-y-4">
                     <template x-for="h in history">
-                        <div class="bg-zinc-900/40 border border-white/5 rounded-3xl p-6 flex items-center justify-between hover:bg-zinc-900/60 transition-all">
+                        <div
+                            class="bg-zinc-900/40 border border-white/5 rounded-3xl p-6 flex items-center justify-between hover:bg-zinc-900/60 transition-all">
                             <div class="flex items-center gap-6">
                                 <div :class="h.status === 'current' ? 'bg-emerald-500 glow-cyan' : h.status === 'rolled_back' ? 'bg-rose-500 glow-rose' : 'bg-zinc-800'"
                                     class="w-3 h-3 rounded-full"></div>
                                 <div>
                                     <div class="flex items-center gap-3 mb-1">
-                                        <span class="font-mono text-cyan-400 font-bold" x-text="h.commit_hash.substring(0, 8)"></span>
-                                        <span :class="h.status === 'current' ? 'text-emerald-400' : 'text-zinc-500'" 
-                                            class="text-[9px] font-black uppercase tracking-[0.2em]" x-text="h.status"></span>
+                                        <span class="font-mono text-cyan-400 font-bold"
+                                            x-text="h.commit_hash.substring(0, 8)"></span>
+                                        <span :class="h.status === 'current' ? 'text-emerald-400' : 'text-zinc-500'"
+                                            class="text-[9px] font-black uppercase tracking-[0.2em]"
+                                            x-text="h.status"></span>
                                     </div>
-                                    <p class="text-zinc-300 font-medium line-clamp-1" x-text="h.commit_msg || 'No commit message'"></p>
-                                    <p class="text-[10px] text-zinc-600 font-bold uppercase mt-1" x-text="formatDate(h.started_at) + ' • ' + h.triggered_by"></p>
+                                    <p class="text-zinc-300 font-medium line-clamp-1"
+                                        x-text="h.commit_msg || 'No commit message'"></p>
+                                    <p class="text-[10px] text-zinc-600 font-bold uppercase mt-1"
+                                        x-text="formatDate(h.started_at) + ' • ' + h.triggered_by"></p>
                                 </div>
                             </div>
                             <button @click="rollbackTo(h.commit_hash)" :disabled="h.status === 'current' || loading"
@@ -449,27 +588,37 @@
         </div>
 
         <!-- GLOBAL INFRASTRUCTURE MODAL -->
-        <div x-show="showSettingsModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition x-cloak>
+        <div x-show="showSettingsModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition
+            x-cloak>
             <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="showSettingsModal = false"></div>
-            <div class="glass p-12 rounded-[3.5rem] w-full max-w-2xl border border-white/10 shadow-2xl relative z-10 overflow-y-auto max-h-[90vh]">
+            <div
+                class="glass p-12 rounded-[3.5rem] w-full max-w-2xl border border-white/10 shadow-2xl relative z-10 overflow-y-auto max-h-[90vh]">
                 <h3 class="text-4xl font-black text-amber-500 tracking-tighter mb-4">Infrastructure Control</h3>
-                <p class="text-zinc-500 text-sm mb-12 font-medium">Core orchestrator settings. Modifying these will trigger a service restart.</p>
+                <p class="text-zinc-500 text-sm mb-12 font-medium">Core orchestrator settings. Modifying these will
+                    trigger a service restart.</p>
 
                 <div class="space-y-10">
                     <!-- SECTION 1: CORE ENGINE -->
                     <section class="space-y-6">
                         <div class="flex items-center gap-3 mb-6">
                             <span class="w-8 h-[1px] bg-amber-500/30"></span>
-                            <span class="text-[10px] font-black text-amber-500/50 uppercase tracking-[0.2em]">Core Engine</span>
+                            <span class="text-[10px] font-black text-amber-500/50 uppercase tracking-[0.2em]">Core
+                                Engine</span>
                         </div>
                         <div class="space-y-6">
                             <div class="relative group">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Central MongoDB URI</label>
-                                <input x-model="settings.mongodb_uri" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-mono">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Central
+                                    MongoDB URI</label>
+                                <input x-model="settings.mongodb_uri" type="text"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-mono">
                             </div>
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Master Admin Email</label>
-                                <input x-model="settings.admin_email" type="email" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Master
+                                    Admin Email</label>
+                                <input x-model="settings.admin_email" type="email"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-amber-500/50 transition-all">
                             </div>
                         </div>
                     </section>
@@ -478,24 +627,38 @@
                     <section class="space-y-6">
                         <div class="flex items-center gap-3 mb-6">
                             <span class="w-8 h-[1px] bg-cyan-500/30"></span>
-                            <span class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">Networking & Webhooks</span>
+                            <span class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">Networking
+                                & Webhooks</span>
                         </div>
                         <div class="grid grid-cols-2 gap-6">
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Management Port</label>
-                                <input x-model.number="settings.webhook_port" type="number" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Management
+                                    Port</label>
+                                <input x-model.number="settings.webhook_port" type="number"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
                             </div>
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Public IP</label>
-                                <input x-model="settings.public_ip" type="text" placeholder="Auto-detect" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Public
+                                    IP</label>
+                                <input x-model="settings.public_ip" type="text" placeholder="Auto-detect"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
                             </div>
                             <div class="relative col-span-2">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook Secret</label>
-                                <input x-model="settings.webhook_secret" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook
+                                    Secret</label>
+                                <input x-model="settings.webhook_secret" type="password" placeholder="••••••••"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
                             </div>
                             <div class="relative col-span-2">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Slack/Discord Webhook URL</label>
-                                <input x-model="settings.notify_url" type="text" placeholder="https://hooks.slack.com/..." class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Slack/Discord
+                                    Webhook URL</label>
+                                <input x-model="settings.notify_url" type="text"
+                                    placeholder="https://hooks.slack.com/..."
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
                             </div>
                         </div>
                     </section>
@@ -504,11 +667,15 @@
                     <section class="space-y-6">
                         <div class="flex items-center gap-3 mb-6">
                             <span class="w-8 h-[1px] bg-emerald-500/30"></span>
-                            <span class="text-[10px] font-black text-emerald-500/50 uppercase tracking-[0.2em]">Engine Performance</span>
+                            <span class="text-[10px] font-black text-emerald-500/50 uppercase tracking-[0.2em]">Engine
+                                Performance</span>
                         </div>
                         <div class="relative">
-                            <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Global Deploy Timeout (Seconds)</label>
-                            <input x-model.number="settings.deploy_timeout" type="number" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
+                            <label
+                                class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Global
+                                Deploy Timeout (Seconds)</label>
+                            <input x-model.number="settings.deploy_timeout" type="number"
+                                class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
                         </div>
                     </section>
 
@@ -516,27 +683,40 @@
                     <section class="space-y-6">
                         <div class="flex items-center gap-3 mb-6">
                             <span class="w-8 h-[1px] bg-rose-500/30"></span>
-                            <span class="text-[10px] font-black text-rose-500/50 uppercase tracking-[0.2em]">Global Notifications (SMTP)</span>
+                            <span class="text-[10px] font-black text-rose-500/50 uppercase tracking-[0.2em]">Global
+                                Notifications (SMTP)</span>
                         </div>
                         <div class="space-y-6">
                             <div class="grid grid-cols-2 gap-6">
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP Host</label>
-                                    <input x-model="settings.smtp_host" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP
+                                        Host</label>
+                                    <input x-model="settings.smtp_host" type="text"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
                                 </div>
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP Port</label>
-                                    <input x-model.number="settings.smtp_port" type="number" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP
+                                        Port</label>
+                                    <input x-model.number="settings.smtp_port" type="number"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
                                 </div>
                             </div>
                             <div class="grid grid-cols-2 gap-6">
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP User</label>
-                                    <input x-model="settings.smtp_user" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP
+                                        User</label>
+                                    <input x-model="settings.smtp_user" type="text"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
                                 </div>
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP Password</label>
-                                    <input x-model="settings.smtp_pass" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">SMTP
+                                        Password</label>
+                                    <input x-model="settings.smtp_pass" type="password" placeholder="••••••••"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
                                 </div>
                             </div>
                         </div>
@@ -547,43 +727,72 @@
                             class="flex-1 bg-amber-600 hover:bg-amber-500 py-5 rounded-[1.5rem] font-black text-black transition-all shadow-xl shadow-amber-900/20 disabled:opacity-50">
                             Apply & Restart Engine
                         </button>
-                        <button @click="showSettingsModal = false" class="px-10 py-5 bg-zinc-900 rounded-[1.5rem] font-bold hover:bg-zinc-800 transition-colors">Cancel</button>
+                        <button @click="showSettingsModal = false"
+                            class="px-10 py-5 bg-zinc-900 rounded-[1.5rem] font-bold hover:bg-zinc-800 transition-colors">Cancel</button>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- CREATE PROJECT MODAL -->
-        <div x-show="showCreateModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition x-cloak>
+        <div x-show="showCreateModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition
+            x-cloak>
             <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="showCreateModal = false"></div>
-            <div class="glass p-12 rounded-[3.5rem] w-full max-w-2xl border border-white/10 shadow-2xl relative z-10 overflow-y-auto max-h-[90vh]">
+            <div
+                class="glass p-12 rounded-[3.5rem] w-full max-w-2xl border border-white/10 shadow-2xl relative z-10 overflow-y-auto max-h-[90vh]">
                 <h3 class="text-4xl font-black text-cyan-400 tracking-tighter mb-4">Register Deployment</h3>
-                <p class="text-zinc-500 text-sm mb-12 font-medium">Configure source control and system execution parameters.</p>
-                
+                <p class="text-zinc-500 text-sm mb-12 font-medium">Configure source control and system execution
+                    parameters.</p>
+
                 <div class="space-y-12">
                     <!-- SOURCE CONTROL -->
                     <section class="space-y-6">
                         <div class="flex items-center gap-3 mb-6">
                             <span class="w-8 h-[1px] bg-cyan-500/30"></span>
-                            <span class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">Source Control</span>
+                            <span class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">Source
+                                Control</span>
                         </div>
                         <div class="grid grid-cols-1 gap-6">
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Repository URL *</label>
-                                <input x-model="newProject.repo_url" type="text" placeholder="https://github.com/..." class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Repository
+                                    URL *</label>
+                                <input x-model="newProject.repo_url" @input="
+                                        newProject.repo_url = newProject.repo_url.trim().replace(/\.git$/, '');
+                                        if(!newProject.service_name) { 
+                                            let parts = newProject.repo_url.split('/'); 
+                                            let last = parts[parts.length-1];
+                                        if(last) newProject.service_name = last;
+                                        }
+                                    " @blur="newProject.repo_url = newProject.repo_url.trim().replace(/\.git$/, '')"
+                                    type="text" placeholder="https://github.com/..."
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono"
+                                    :class="newProject.repo_url && !isValidGitHubUrl(newProject.repo_url) ? 'border-rose-500/50 focus:ring-rose-500/50' : ''">
+                                <p x-show="newProject.repo_url && !isValidGitHubUrl(newProject.repo_url)"
+                                    class="text-[9px] text-rose-500 mt-2 px-2 font-bold animate-pulse">
+                                    ⚠️ Invalid GitHub URL format. Use: https://github.com/user/repo
+                                </p>
                             </div>
                             <div class="grid grid-cols-2 gap-6">
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Branch</label>
-                                    <input x-model="newProject.branch" type="text" placeholder="main" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Branch</label>
+                                    <input x-model="newProject.branch" type="text" placeholder="main"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
                                 </div>
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git Username</label>
-                                    <input x-model="newProject.git_username" type="text" placeholder="Optional" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git
+                                        Username</label>
+                                    <input x-model="newProject.git_username" type="text" placeholder="Optional"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
                                 </div>
                                 <div class="relative col-span-2">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git Personal Access Token</label>
-                                    <input x-model="newProject.git_password" type="password" placeholder="ghp_..." class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git
+                                        Personal Access Token</label>
+                                    <input x-model="newProject.git_password" type="password" placeholder="ghp_..."
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
                                 </div>
                             </div>
                         </div>
@@ -593,41 +802,138 @@
                     <section class="space-y-6">
                         <div class="flex items-center gap-3 mb-6">
                             <span class="w-8 h-[1px] bg-purple-500/30"></span>
-                            <span class="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">System & Service</span>
+                            <span class="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">System &
+                                Service</span>
                         </div>
                         <div class="grid grid-cols-1 gap-6">
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Service Name *</label>
-                                <input x-model="newProject.service_name" type="text" placeholder="my-app" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Service
+                                    Name *</label>
+                                <input x-model="newProject.service_name" type="text" placeholder="my-app"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
                             </div>
                             <div class="grid grid-cols-2 gap-6">
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">System User (OS)</label>
-                                    <input x-model="newProject.user" type="text" placeholder="e.g. ubuntu" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">System
+                                        User (OS)</label>
+                                    <input x-model="newProject.user" type="text" placeholder="e.g. ubuntu"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
                                 </div>
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Deploy User (Identity)</label>
-                                    <input x-model="newProject.service_user" type="text" placeholder="e.g. root" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Deploy
+                                        User (Identity)</label>
+                                    <input x-model="newProject.service_user" type="text" placeholder="e.g. root"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
                                 </div>
                             </div>
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Base Directory</label>
-                                <input x-model="newProject.base_dir" type="text" placeholder="/home/" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Public
+                                    IP (Target Server) *</label>
+                                <input x-model="newProject.public_ip" list="fleet-ips" type="text"
+                                    placeholder="Select or type IP..."
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono">
+                                <datalist id="fleet-ips">
+                                    <template x-for="ip in fleet">
+                                        <option :value="ip" x-text="ip"></option>
+                                    </template>
+                                </datalist>
                             </div>
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Sudo Password (for Install Scripts)</label>
-                                <input x-model="newProject.sudo_pass" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Base
+                                    Directory</label>
+                                <input x-model="newProject.base_dir" type="text" placeholder="/home/"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                            </div>
+                            <div class="relative">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Sudo
+                                    Password (for Install Scripts)</label>
+                                <input x-model="newProject.sudo_pass" type="password" placeholder="••••••••"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ADVANCED SETTINGS -->
+                    <section x-data="{ open: false }" class="space-y-6">
+                        <button @click="open = !open"
+                            class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2 hover:text-zinc-300 transition-colors">
+                            <span :class="open ? 'rotate-90' : ''" class="transition-transform inline-block">▶</span>
+                            Advanced Infrastructure Settings
+                        </button>
+
+                        <div x-show="open" x-transition class="space-y-8 pt-4 border-t border-white/5">
+                            <div class="grid grid-cols-2 gap-6">
+                                <div class="relative">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Dedicated
+                                        Webhook Port</label>
+                                    <input x-model.number="newProject.webhook_port" type="number"
+                                        placeholder="0 (Unified)"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-zinc-500/50 transition-all">
+                                    <p class="text-[9px] text-zinc-600 mt-2 px-2">Leave 0 to use the standard
+                                        orchestrator port.</p>
+                                </div>
+                                <div class="relative">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook
+                                        Secret Override</label>
+                                    <input x-model="newProject.webhook_secret" type="password" placeholder="••••••••"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-zinc-500/50 transition-all">
+                                </div>
                             </div>
                         </div>
                     </section>
 
                     <div class="flex gap-4 pt-6">
-                        <button @click="createProject()" :disabled="loading"
-                            class="flex-1 bg-cyan-600 hover:bg-cyan-500 py-5 rounded-[1.5rem] font-black text-black transition-all shadow-xl shadow-cyan-900/20 disabled:opacity-50">
+                        <button @click="createProject()"
+                            :disabled="loading || !newProject.repo_url || !isValidGitHubUrl(newProject.repo_url) || !newProject.service_name"
+                            class="flex-1 bg-cyan-600 hover:bg-cyan-500 py-5 rounded-[1.5rem] font-black text-black transition-all shadow-xl shadow-cyan-900/20 disabled:opacity-30 disabled:cursor-not-allowed">
                             Launch Production Deployment
                         </button>
-                        <button @click="showCreateModal = false" class="px-10 py-5 bg-zinc-900 rounded-[1.5rem] font-bold hover:bg-zinc-800 transition-colors">Cancel</button>
+                        <button @click="showCreateModal = false"
+                            class="px-10 py-5 bg-zinc-900 rounded-[1.5rem] font-bold hover:bg-zinc-800 transition-colors">Cancel</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PORT MAPPING MODAL -->
+        <div x-show="showPortsModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition
+            x-cloak>
+            <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="showPortsModal = false"></div>
+            <div class="glass p-10 rounded-[3rem] w-full max-w-lg border border-white/10 shadow-2xl relative z-10">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h3 class="text-3xl font-black text-emerald-400 tracking-tighter">Port Mapping</h3>
+                        <p class="text-zinc-500 text-sm mt-1 font-medium">All TCP ports currently listening on this
+                            node.</p>
+                    </div>
+                    <button @click="showPortsModal = false" class="text-zinc-500 hover:text-white transition">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <button @click="fetchPorts()"
+                    class="mb-6 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-white transition">↻
+                    Refresh</button>
+                <template x-if="serverPorts.length === 0">
+                    <p class="text-zinc-600 text-sm text-center py-8">No listening ports detected.</p>
+                </template>
+                <div class="grid grid-cols-3 gap-3">
+                    <template x-for="port in serverPorts">
+                        <div class="bg-zinc-900/60 border border-white/5 rounded-2xl p-4 text-center">
+                            <p class="font-mono font-black text-emerald-400 text-lg" x-text="port"></p>
+                            <p class="text-[9px] text-zinc-600 font-bold uppercase mt-1">TCP</p>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
@@ -653,6 +959,7 @@
                 showSettingsModal: false,
                 showHistoryModal: false,
                 showPortsModal: false,
+                serverPorts: [],
                 settings: {},
                 history: [],
                 fleetStream: null,
@@ -661,12 +968,15 @@
                     repo_url: '',
                     service_name: '',
                     branch: 'main',
+                    public_ip: '',
                     user: '',
-                    service_user: 'root',
+                    service_user: '',
                     base_dir: '/home/',
                     git_username: '',
                     git_password: '',
-                    sudo_pass: ''
+                    sudo_pass: '',
+                    webhook_port: 0,
+                    webhook_secret: ''
                 },
 
                 init() {
@@ -674,6 +984,13 @@
                         this.fetchFleet();
                         this.initFleetStream();
                     }
+                    // Auto-scroll terminal whenever logs change, regardless of source
+                    this.$watch('activeLogs', () => {
+                        this.$nextTick(() => {
+                            const el = document.getElementById('log-container');
+                            if (el) el.scrollTop = el.scrollHeight;
+                        });
+                    });
                 },
 
                 // AUTHENTICATION
@@ -716,15 +1033,39 @@
 
                 // CORE DATA
                 async fetchFleet() {
-                    const res = await fetch('/api/fleet', { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
+                    const token = localStorage.getItem('cicd_token');
+                    const res = await fetch('/api/fleet', { headers: { 'Authorization': token } });
                     if (res.status === 401) return this.logout();
                     this.fleet = await res.json();
-                    if (this.fleet.length > 0 && !this.selectedIP) this.selectServer(this.fleet[0]);
+
+                    // Auto-select first node if none selected
+                    if (!this.selectedIP && this.fleet.length > 0) {
+                        this.selectServer(this.fleet[0]);
+                    }
+                    this.refreshData();
+                },
+
+                async refreshData() {
+                    if (!this.selectedIP) return;
+                    const token = localStorage.getItem('cicd_token');
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+
+                    try {
+                        const res = await fetch(`${baseUrl}/api/projects`, { headers: { 'Authorization': token } });
+                        if (res.ok) {
+                            this.projects = await res.json();
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch node projects:", e);
+                    }
                 },
 
                 initFleetStream() {
                     if (this.fleetStream) this.fleetStream.close();
-                    this.fleetStream = new EventSource(`/api/stream/fleet?token=${localStorage.getItem('cicd_token')}`);
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = this.selectedIP ? `http://${this.selectedIP}:${port}` : '';
+                    this.fleetStream = new EventSource(`${baseUrl}/api/stream/fleet?token=${localStorage.getItem('cicd_token')}`);
                     this.fleetStream.onmessage = (e) => {
                         const data = JSON.parse(e.data);
                         if (data) this.projects = data;
@@ -734,6 +1075,8 @@
                 selectServer(ip) {
                     this.selectedIP = ip;
                     this.closeLogs();
+                    this.refreshData();
+                    this.initFleetStream();
                 },
 
                 // LOGS & TERMINAL
@@ -744,16 +1087,28 @@
                     this.initLogStream(p.ID);
                 },
 
-                async viewSystemLogs(ip) {
+                async viewSystemLogs() {
                     this.systemLogsActive = true;
                     this.selectedProject = null;
-                    const res = await fetch(`/api/system/logs`, { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
-                    this.activeLogs = await res.text();
+                    this.activeLogs = '--- CONNECTING TO SYSTEM LOG STREAM ---\n';
+                    if (this.logStream) this.logStream.close();
+
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    this.logStream = new EventSource(`${baseUrl}/api/system/logs/stream?token=${localStorage.getItem('cicd_token')}`);
+                    this.logStream.onmessage = (e) => {
+                        this.activeLogs += e.data + '\n';
+                    };
+                    this.logStream.onerror = () => {
+                        this.activeLogs += '\n--- Stream connection lost ---\n';
+                    };
                 },
 
                 initLogStream(id) {
                     if (this.logStream) this.logStream.close();
-                    this.logStream = new EventSource(`/api/projects/${id}/logs/stream?token=${localStorage.getItem('cicd_token')}`);
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    this.logStream = new EventSource(`${baseUrl}/api/projects/${id}/logs/stream?token=${localStorage.getItem('cicd_token')}`);
                     this.logStream.onmessage = (e) => {
                         this.activeLogs += e.data + "\n";
                         this.$nextTick(() => {
@@ -773,10 +1128,16 @@
                 formatLogs(text) {
                     if (!text) return '';
                     return text.replace(/\[INFO\]/g, '<span class="text-cyan-400 font-bold">[INFO]</span>')
-                               .replace(/\[ERROR\]/g, '<span class="text-rose-500 font-bold">[ERROR]</span>')
-                               .replace(/\[WARN\]/g, '<span class="text-amber-400 font-bold">[WARN]</span>')
-                               .replace(/✅/g, '<span class="text-emerald-400">✅</span>')
-                               .replace(/🔥/g, '<span class="text-rose-500 font-bold">🔥</span>');
+                        .replace(/\[ERROR\]/g, '<span class="text-rose-500 font-bold">[ERROR]</span>')
+                        .replace(/\[WARN\]/g, '<span class="text-amber-400 font-bold">[WARN]</span>')
+                        .replace(/✅/g, '<span class="text-emerald-400">✅</span>')
+                        .replace(/🔥/g, '<span class="text-rose-500 font-bold">🔥</span>');
+                },
+
+                isValidGitHubUrl(url) {
+                    if (!url) return true;
+                    const regex = /^https?:\/\/(www\.)?github\.com\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
+                    return regex.test(url);
                 },
 
                 // PROJECT ACTIONS
@@ -797,48 +1158,82 @@
 
                 async redeployProject(p) {
                     if (!confirm(`Trigger new deployment for ${p.ServiceName}?`)) return;
-                    await fetch(`/api/projects/${p.ID}/deploy`, { 
-                        method: 'POST', 
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    await fetch(`${baseUrl}/api/projects/${p.ID}/deploy`, {
+                        method: 'POST',
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
                     });
                 },
 
                 async stopProject(p) {
                     if (!confirm(`Stop process for ${p.ServiceName}?`)) return;
-                    await fetch(`/api/projects/${p.ID}/stop`, { 
-                        method: 'POST', 
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    await fetch(`${baseUrl}/api/projects/${p.ID}/stop`, {
+                        method: 'POST',
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
                     });
                 },
 
                 async togglePin(p) {
                     const action = p.IsPinned ? 'unpin' : 'pin';
-                    await fetch(`/api/projects/${p.ID}/${action}`, { 
-                        method: 'POST', 
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    await fetch(`${baseUrl}/api/projects/${p.ID}/${action}`, {
+                        method: 'POST',
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
                     });
                 },
 
                 async forceReinstall(p) {
                     if (!confirm(`Wipe cache and force full install for ${p.ServiceName}?`)) return;
-                    await fetch(`/api/projects/${p.ID}/reinstall`, { 
-                        method: 'POST', 
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    await fetch(`${baseUrl}/api/projects/${p.ID}/reinstall`, {
+                        method: 'POST',
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
                     });
                 },
 
                 async deleteProject(p) {
                     if (!confirm(`DELETE ${p.ServiceName} PERMANENTLY?`)) return;
-                    await fetch(`/api/projects/${p.ID}`, { 
-                        method: 'DELETE', 
-                        headers: { 'Authorization': localStorage.getItem('cicd_token') } 
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    await fetch(`${baseUrl}/api/projects/${p.ID}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': localStorage.getItem('cicd_token') }
                     });
+                },
+
+                async runCustomCommand(p) {
+                    const cmd = prompt(`Enter bash command to run inside ${p.ServiceName}:`);
+                    if (!cmd) return;
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    const res = await fetch(`${baseUrl}/api/projects/${p.ID}/run`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('cicd_token') },
+                        body: JSON.stringify({ command: cmd })
+                    });
+                    const output = await res.text();
+                    alert(output || 'Command executed (no output)');
+                },
+
+                async fetchPorts() {
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    const res = await fetch(`${baseUrl}/api/server/ports`, { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
+                    const data = await res.json();
+                    this.serverPorts = data.listening || [];
                 },
 
                 // HISTORY & ROLLBACK
                 async viewHistory(p) {
                     this.historyProject = p;
-                    const res = await fetch(`/api/projects/${p.ID}/history`, { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    const res = await fetch(`${baseUrl}/api/projects/${p.ID}/history`, { headers: { 'Authorization': localStorage.getItem('cicd_token') } });
                     this.history = await res.json();
                     this.showHistoryModal = true;
                 },
@@ -846,8 +1241,10 @@
                 async rollbackTo(hash) {
                     if (!confirm(`ROLLBACK to ${hash.substring(0, 8)}? Current process will be replaced.`)) return;
                     this.loading = true;
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
                     try {
-                        await fetch(`/api/projects/${this.historyProject.ID}/rollback`, {
+                        await fetch(`${baseUrl}/api/projects/${this.historyProject.ID}/rollback`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('cicd_token') },
                             body: JSON.stringify({ commit_hash: hash })
@@ -877,14 +1274,15 @@
 
                 // UTILS
                 calculateTotalCPU() {
-                    if (this.projects.length === 0) return 0;
-                    const sum = this.projects.reduce((acc, p) => acc + (p.cpu_percent || 0), 0);
-                    return (sum / this.projects.length).toFixed(1);
+                    const nodeProjects = this.projects.filter(p => p.PublicIP === this.selectedIP);
+                    if (nodeProjects.length === 0) return 0;
+                    const sum = nodeProjects.reduce((acc, p) => acc + (p.cpu_percent || 0), 0);
+                    return (sum / nodeProjects.length).toFixed(1);
                 },
 
                 getOldestUptime() {
                     // Placeholder for actual node uptime logic
-                    return "99.9%"; 
+                    return "99.9%";
                 },
 
                 formatDate(dateStr) {

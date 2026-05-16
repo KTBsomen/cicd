@@ -222,16 +222,15 @@ func SyncRepo(cfg *parser.Config) error {
 		}
 	}
 
-	// EC-7: 5-minute timeout for git operations
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// EC-7: 10-minute timeout for git operations
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	if _, err := os.Stat(filepath.Join(codebasePath, ".git")); os.IsNotExist(err) {
-		// EC-15: Shallow clone for speed
-		logger.Info(fmt.Sprintf("Cloning repository into codebase/..."), cfg)
+		logger.Info("Cloning repository into codebase/...", cfg)
 		oldDir := cfg.ServiceDir
 		cfg.ServiceDir = codebasePath
-		err := RunAsUserWithContext(ctx, cfg, "git", "clone", "--depth", "50", repoURL, ".")
+		err := RunAsUserWithContext(ctx, cfg, "git", "clone", repoURL, ".")
 		cfg.ServiceDir = oldDir
 		return err
 	}
@@ -527,13 +526,29 @@ func isValidUsername(s string) bool {
 	return true
 }
 
+// GetRepoHash returns the current HEAD commit hash of the project's codebase
+func GetRepoHash(cfg *parser.Config) (string, error) {
+	codebasePath := filepath.Join(cfg.ServiceDir, "codebase")
+	u, err := user.Lookup(cfg.ServiceUser)
+	if err != nil {
+		return "", err
+	}
+	uidInt, _ := strconv.Atoi(u.Uid)
+	gidInt, _ := strconv.Atoi(u.Gid)
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = codebasePath
+	cmd.Env = append(os.Environ(), "HOME="+u.HomeDir, "USER="+u.Username)
+	setPlatformAttributes(cmd, uint32(uidInt), uint32(gidInt))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse failed: %v (output: %s)", err, string(output))
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 // FullDeployPipeline is the standard deployment function used by the queue.
-// It runs: sync → deploy → health check, with proper status tracking.
 func FullDeployPipeline(cfg *parser.Config, commitHash, commitMsg string) {
 	projectID, _ := database.GetProjectIDByDir(cfg.ServiceDir)
-	if projectID > 0 {
-		database.AddCommitToHistory(projectID, commitHash, commitMsg, "webhook")
-	}
 	database.SetDeployStatusByDir(cfg.ServiceDir, "deploying")
 
 	if err := SyncRepo(cfg); err != nil {
@@ -541,6 +556,20 @@ func FullDeployPipeline(cfg *parser.Config, commitHash, commitMsg string) {
 		database.SetDeployStatusByDir(cfg.ServiceDir, "failed")
 		sendNotification(cfg, fmt.Sprintf("🔥 Sync failed for '%s': %v", cfg.ServiceName, err))
 		return
+	}
+
+	trigger := "webhook"
+	// If hash is missing (e.g. manual create), detect it after sync
+	if commitHash == "" {
+		trigger = "manual"
+		if h, err := GetRepoHash(cfg); err == nil {
+			commitHash = h
+		}
+	}
+
+	// Record commit in history
+	if projectID > 0 {
+		database.AddCommitToHistory(projectID, commitHash, commitMsg, trigger)
 	}
 
 	if err := RunDeployment(cfg); err != nil {
@@ -551,9 +580,10 @@ func FullDeployPipeline(cfg *parser.Config, commitHash, commitMsg string) {
 	}
 
 	database.UpdateCommitHashLocal(cfg.ServiceDir, commitHash)
+	database.UpdateLastCommitInfo(cfg.ServiceDir, commitHash, commitMsg)
 	if cfg.MongoDBURI != "" {
 		go database.UpdateCommitHash(cfg, commitHash)
 	}
 
-	go PostDeployHealthCheck(cfg, commitHash, "webhook", 0)
+	go PostDeployHealthCheck(cfg, commitHash, trigger, 0)
 }

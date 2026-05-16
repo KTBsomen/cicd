@@ -11,6 +11,8 @@ import (
 	"gosrc/deploypath"
 	"gosrc/logger"
 	"gosrc/parser"
+	"math/rand"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -58,7 +60,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 	// 0. HEALTH CHECK
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set("Content-Type", "text/html")
-		return c.Send([]byte("🚀 CICD Unified Gateway is LIVE!\n\nAccess the Dashboard at: <a href='/dashboard'>/dashboard</a>"))
+		return c.Send([]byte("CICD Unified Gateway is LIVE!\n\nAccess the Dashboard at: <a href='/dashboard'>/dashboard</a>"))
 	})
 
 	// --- 1. WEBHOOK ROUTE ---
@@ -66,29 +68,67 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if c.Get("X-Github-Event") == "ping" {
 			return c.SendString("Pong")
 		}
+		// cfg.WebhookSecret is correctly loaded from DB via LoadGlobalSettings at startup
 		if err := verifySignature(c, cfg.WebhookSecret); err != nil {
 			logger.Warn("Unauthorized webhook: "+err.Error(), cfg)
 			return c.Status(401).SendString(err.Error())
 		}
-		data, err := parseAndValidateWebhook(c, cfg)
+
+		// Step 1: Extract repo URL from payload to identify which project this is for
+		data, err := parseWebhookPayload(c)
 		if err != nil {
 			return c.Status(200).SendString(err.Error())
 		}
 
-		// F5: Check if project is pinned
-		project, _ := database.GetProjectByRepoURL(cfg.RepoURL)
-		if project != nil {
-			if project.IsPinned {
-				// Record commit but don't deploy
-				database.AddCommitToHistory(project.ID, data.Hash, "", "webhook")
-				logger.Info(fmt.Sprintf("📌 Project pinned. Commit %s recorded but NOT deployed.", data.Hash[:8]), cfg)
-				return c.SendString("Pinned — commit recorded")
-			}
+		// Step 2: Look up the project from the DB by repo URL
+		// cfg has no RepoURL — projects are registered dynamically via dashboard/CLI
+		dbProject, err := database.GetProjectByRepoURL(data.Repo)
+		if err != nil || dbProject == nil {
+			logger.Warn(fmt.Sprintf("Webhook for unknown repo: %s", data.Repo), cfg)
+			return c.Status(200).SendString("repo not registered")
 		}
 
-		// Use the deployment queue
-		actions.EnqueueDeployment(cfg, data.Hash, "", actions.FullDeployPipeline)
-		logger.Info(fmt.Sprintf("🚀 WEBHOOK TRIGGERED: %s (Commit: %s)", cfg.ServiceName, data.Hash[:8]), cfg)
+		// Step 3: Validate branch against this specific project's configured branch
+		if data.Branch != "refs/heads/"+dbProject.Branch {
+			logger.Info(fmt.Sprintf("Branch skip for %s: got %s, watching refs/heads/%s", dbProject.ServiceName, data.Branch, dbProject.Branch), cfg)
+			return c.Status(200).SendString("branch mismatch")
+		}
+
+		if data.Hash == "" {
+			return c.Status(200).SendString("no commit hash")
+		}
+
+		// Step 4: Build project-specific config from DB row
+		projectCfg, err := dbProject.ToConfig()
+		if err != nil {
+			logger.Error("Webhook: failed to build project config: "+err.Error(), cfg)
+			return c.Status(500).SendString("project config error")
+		}
+		// Step 5: Merge global settings from cfg (already loaded from DB via LoadGlobalSettings)
+		// These fields are not stored per-project, they live in the settings table
+		projectCfg.MongoDBURI = cfg.MongoDBURI
+		projectCfg.WebhookSecret = cfg.WebhookSecret
+		projectCfg.SMTPHost = cfg.SMTPHost
+		projectCfg.SMTPPort = cfg.SMTPPort
+		projectCfg.SMTPUser = cfg.SMTPUser
+		projectCfg.SMTPPass = cfg.SMTPPass
+		projectCfg.NotifyURL = cfg.NotifyURL
+		projectCfg.DeployTimeout = cfg.DeployTimeout
+
+		// F5: Check if project is pinned — record commit but skip deployment
+		// (FullDeployPipeline calls AddCommitToHistory internally, so we don't here)
+		if dbProject.IsPinned {
+			database.AddCommitToHistory(dbProject.ID, data.Hash, data.CommitMsg, "webhook")
+			database.UpdateLastCommitInfo(dbProject.ServiceDir, data.Hash, data.CommitMsg)
+			logger.Info(fmt.Sprintf("📌 Project '%s' pinned. Commit %s recorded, NOT deployed.", dbProject.ServiceName, data.Hash[:8]), projectCfg)
+			return c.SendString("Pinned — commit recorded")
+		}
+
+		// Step 6: Update last commit info on the project row, then enqueue.
+		// AddCommitToHistory is called inside FullDeployPipeline — do NOT call it here too.
+		database.UpdateLastCommitInfo(dbProject.ServiceDir, data.Hash, data.CommitMsg)
+		actions.EnqueueDeployment(projectCfg, data.Hash, data.CommitMsg, actions.FullDeployPipeline)
+		logger.Info(fmt.Sprintf("🚀 WEBHOOK TRIGGERED: %s (Commit: %s)", projectCfg.ServiceName, data.Hash[:8]), projectCfg)
 		return c.SendString("Deployment initiated")
 	})
 
@@ -227,8 +267,23 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err := c.Bind().JSON(&req); err != nil {
 			return c.Status(400).SendString("Invalid request format")
 		}
-		if req.RepoURL == "" || req.ServiceName == "" || req.ServiceUser == "" {
+		if req.RepoURL == "" || req.ServiceName == "" {
 			return c.Status(400).SendString("Missing required fields: repo_url, service_name, service_user")
+		}
+		if req.ServiceUser == "" {
+
+			// Generate clean slug from project name
+			slug := deploypath.Slugify(req.ServiceName)
+
+			// Generate random suffix to avoid any collisions
+			suffix, err := deploypath.RandomHex(6)
+			if err != nil {
+				logger.Error(fmt.Sprintf("failed to generate random hex: %v", err), cfg)
+				suffix = strconv.Itoa(rand.Intn(1000000))
+			}
+
+			serviceUserName := fmt.Sprintf("%s-%s", slug, suffix)
+			req.ServiceUser = "cicd_usr_" + serviceUserName
 		}
 		if req.Branch == "" {
 			req.Branch = "main"
@@ -236,14 +291,13 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if req.BaseDir == "" {
 			req.BaseDir = cfg.ServiceDir
 		}
-		if req.WebhookPort == 0 {
-			req.WebhookPort = 9641
-		}
 
-		// EC-16: Port conflict check
-		existing, _ := database.CheckPortConflict(req.WebhookPort, 0)
-		if existing != "" {
-			return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("Port %d already in use by project '%s'", req.WebhookPort, existing)})
+		// EC-16: Port conflict check (only if a specific port is requested)
+		if req.WebhookPort > 0 {
+			existing, _ := database.CheckPortConflict(req.WebhookPort, 0)
+			if existing != "" {
+				return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("Port %d already in use by project '%s'", req.WebhookPort, existing)})
+			}
 		}
 
 		existingPaths, _ := database.GetAllDeploymentPaths()
@@ -272,11 +326,26 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if req.GitPassword != "" {
 			projectCfg.GitPassword = req.GitPassword
 		}
+		if req.PublicIP == "" {
+			req.PublicIP = cfg.PublicIP // Use the server's own detected IP as default
+		}
+
+		// Validate IP format (simple check)
+		if net.ParseIP(req.PublicIP) == nil && req.PublicIP != "localhost" && req.PublicIP != "127.0.0.1" {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid Public IP address format"})
+		}
+
 		if req.PublicIP != "" {
 			projectCfg.PublicIP = req.PublicIP
 		}
 		if req.SudoPass != "" {
 			projectCfg.SudoPass = req.SudoPass
+		}
+		if req.WebhookPort > 0 {
+			projectCfg.Webhook = req.WebhookPort
+		}
+		if req.WebhookSecret != "" {
+			projectCfg.WebhookSecret = req.WebhookSecret
 		}
 
 		if err := actions.SetupProjectFolder(&projectCfg); err != nil {
@@ -286,10 +355,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 		database.RegisterToMongo(&projectCfg)
 
 		// Use deployment queue
-		actions.EnqueueDeployment(&projectCfg, "", "", func(c *parser.Config, h, m string) {
-			actions.SyncRepo(c)
-			actions.RunDeployment(c)
-		})
+		actions.EnqueueDeployment(&projectCfg, "", "", actions.FullDeployPipeline)
 
 		return c.Status(201).JSON(fiber.Map{
 			"message":     "Project created and deployment started",
@@ -310,11 +376,87 @@ func StartUnifiedServer(cfg *parser.Config) {
 	})
 
 	api.Get("/system/logs", func(c fiber.Ctx) error {
-		data, err := os.ReadFile("/var/log/cicd/system.log")
+		f, err := os.Open("/var/log/cicd/system.log")
 		if err != nil {
 			return c.Status(404).SendString("Not found")
 		}
+		defer f.Close()
+		stat, _ := f.Stat()
+		const tailBytes = 100 * 1024 // last 100 KB only — never blocks
+		if stat.Size() > tailBytes {
+			f.Seek(stat.Size()-tailBytes, io.SeekStart)
+			// skip the partial first line
+			buf := make([]byte, 1)
+			for {
+				n, e := f.Read(buf)
+				if n > 0 && buf[0] == '\n' {
+					break
+				}
+				if e != nil {
+					break
+				}
+			}
+		}
+		data, _ := io.ReadAll(f)
 		return c.SendString(string(data))
+	})
+
+	// SSE: live-tail of the system log — same pattern as project log stream
+	api.Get("/system/logs/stream", func(c fiber.Ctx) error {
+		c.Set("Content-Type", "text/event-stream")
+		c.Set("Cache-Control", "no-cache")
+		c.Set("Connection", "keep-alive")
+		c.Set("X-Accel-Buffering", "no")
+		const sysLog = "/var/log/cicd/system.log"
+		c.Response().SetBodyStreamWriter(func(w *bufio.Writer) {
+			fmt.Fprintf(w, ": heartbeat\n\n")
+			w.Flush()
+			file, err := os.Open(sysLog)
+			if err != nil {
+				fmt.Fprintf(w, "data: ❌ Cannot open system log: %v\n\n", err)
+				w.Flush()
+				return
+			}
+			defer file.Close()
+			stat, _ := file.Stat()
+			const tailBytes = 50 * 1024
+			offset := int64(0)
+			if stat.Size() > tailBytes {
+				offset = stat.Size() - tailBytes
+			}
+			file.Seek(offset, io.SeekStart)
+			scanner := bufio.NewScanner(file)
+			if offset > 0 {
+				scanner.Scan() // discard partial first line
+			}
+			for scanner.Scan() {
+				fmt.Fprintf(w, "data: %s\n\n", scanner.Text())
+			}
+			w.Flush()
+			reader := bufio.NewReader(file)
+			lastHeartbeat := time.Now()
+			for {
+				line, err := reader.ReadString('\n')
+				if err != nil {
+					if err == io.EOF {
+						if time.Since(lastHeartbeat) > 15*time.Second {
+							fmt.Fprintf(w, ": heartbeat\n\n")
+							w.Flush()
+							lastHeartbeat = time.Now()
+						}
+						time.Sleep(500 * time.Millisecond)
+						continue
+					}
+					return
+				}
+				fmt.Fprintf(w, "data: %s\n\n", strings.TrimSpace(line))
+				if err := w.Flush(); err != nil {
+					return
+				}
+				lastHeartbeat = time.Now()
+			}
+		})
+		return nil
 	})
 
 	api.Post("/projects/:id/stop", func(c fiber.Ctx) error {
@@ -480,7 +622,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 				if err := w.Flush(); err != nil {
 					return
 				}
-				time.Sleep(3 * time.Second) // 3s instead of 2s to reduce CPU
+				time.Sleep(5 * time.Second) // 3s instead of 2s to reduce CPU
 			}
 		})
 		return nil
@@ -607,14 +749,15 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if req.SMTPPass != "" {
 			cfg.SMTPPass = req.SMTPPass
 		}
-		if req.PublicIP != "" {
-			cfg.PublicIP = req.PublicIP
-		}
+
 		if req.NotifyURL != "" {
 			cfg.NotifyURL = req.NotifyURL
 		}
 		if req.DeployTimeout != 0 {
 			cfg.DeployTimeout = req.DeployTimeout
+		}
+		if strings.ToUpper(req.PublicIP) == "AUTO" || req.PublicIP == "" {
+			cfg.PublicIP = parser.GetPublicIP()
 		}
 		database.SaveGlobalSettings(cfg)
 		logger.Info("⚙️  Global settings updated via UI", cfg)
@@ -667,26 +810,23 @@ func verifySignature(c fiber.Ctx, secret string) error {
 }
 
 type WebhookData struct {
-	Hash   string
-	Branch string
-	Repo   string
+	Hash      string
+	Branch    string
+	Repo      string
+	CommitMsg string
 }
 
-func parseAndValidateWebhook(c fiber.Ctx, cfg *parser.Config) (*WebhookData, error) {
+// parseWebhookPayload extracts the raw fields from a GitHub push event body.
+// All validation (repo match, branch match) is done by the caller after a DB lookup.
+func parseWebhookPayload(c fiber.Ctx) (*WebhookData, error) {
 	p := jsjson.MustParse(string(c.Body()))
 	data := &WebhookData{}
 	data.Hash, _ = p.Get("head_commit", "id").String()
 	data.Branch, _ = p.Get("ref").String()
 	data.Repo, _ = p.Get("repository", "html_url").String()
-
-	if data.Repo != cfg.RepoURL {
-		return nil, fmt.Errorf("repo mismatch")
-	}
-	if data.Branch != "refs/heads/"+cfg.Branch {
-		return nil, fmt.Errorf("branch mismatch")
-	}
-	if data.Hash == "" {
-		return nil, fmt.Errorf("no hash")
+	data.CommitMsg, _ = p.Get("head_commit", "message").String()
+	if data.Repo == "" {
+		return nil, fmt.Errorf("missing repository url in payload")
 	}
 	return data, nil
 }
@@ -705,15 +845,32 @@ func getProcessStats(pid int) (cpuPct float64, memMB float64) {
 	return cpu, memMB
 }
 
-// F15: Get listening ports for a specific PID
+// F15: Get listening ports for a specific PID.
+// Uses process-level Connections() which reads /proc/<pid>/net/tcp directly,
+// correctly populating Port info without needing the global /proc/net/tcp Pid scan.
 func getProcessListeningPorts(pid int32) []uint32 {
-	conns, err := gnet.Connections("tcp")
+	p, err := process.NewProcess(pid)
 	if err != nil {
 		return nil
 	}
+	conns, err := p.Connections()
+	if err != nil {
+		// Fallback: scan global connections and match by pid
+		allConns, err2 := gnet.Connections("tcp")
+		if err2 != nil {
+			return nil
+		}
+		var ports []uint32
+		for _, c := range allConns {
+			if c.Status == "LISTEN" && c.Pid == pid {
+				ports = append(ports, c.Laddr.Port)
+			}
+		}
+		return ports
+	}
 	var ports []uint32
 	for _, c := range conns {
-		if c.Status == "LISTEN" && c.Pid == pid {
+		if c.Status == "LISTEN" {
 			ports = append(ports, c.Laddr.Port)
 		}
 	}

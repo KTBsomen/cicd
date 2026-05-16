@@ -75,7 +75,7 @@ func InitDB(cfg *parser.Config) error {
 	}
 
 	// Connection pool settings for memory efficiency
-	DB.SetMaxOpenConns(1)   // SQLite only supports one writer
+	DB.SetMaxOpenConns(1) // SQLite only supports one writer
 	DB.SetMaxIdleConns(1)
 	DB.SetConnMaxLifetime(0) // Keep open forever
 
@@ -362,7 +362,9 @@ func RegisterProject(cfg *parser.Config) error {
 
 // GetAllProjects reads every project from the database so the orchestrator can start them.
 func GetAllProjects() ([]Project, error) {
-	rows, err := DB.Query("SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user, COALESCE(is_pinned,0), COALESCE(deploy_status,'idle') FROM users")
+	rows, err := DB.Query(`SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user,
+		COALESCE(is_pinned,0), COALESCE(deploy_status,'idle'),
+		COALESCE(lastCommitHash,''), COALESCE(lastCommitMsg,'') FROM users`)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +374,7 @@ func GetAllProjects() ([]Project, error) {
 	for rows.Next() {
 		var p Project
 		var pinned int
-		err := rows.Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &pinned, &p.DeployStatus)
+		err := rows.Scan(&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &pinned, &p.DeployStatus, &p.LastCommitHash, &p.LastCommitMsg)
 		if err != nil {
 			continue
 		}
@@ -446,7 +448,7 @@ func (p *Project) ToConfig() (*parser.Config, error) {
 		AdminEmail:  p.AdminEmail,
 		ServiceDir:  p.ServiceDir,
 		GitPassword: p.GithubToken,
-		GitUsername:  p.GithubUsername,
+		GitUsername: p.GithubUsername,
 	}, nil
 }
 
@@ -613,5 +615,11 @@ func CheckPortConflict(port int, excludeProjectID int) (string, error) {
 // UpdateCommitHashLocal updates the last commit hash in the users table
 func UpdateCommitHashLocal(serviceDir string, hash string) error {
 	_, err := DB.Exec("UPDATE users SET lastCommitHash = ? WHERE serviceDir = ?", hash, serviceDir)
+	return err
+}
+
+// UpdateLastCommitInfo updates both the commit hash and message on the project row
+func UpdateLastCommitInfo(serviceDir, hash, msg string) error {
+	_, err := DB.Exec("UPDATE users SET lastCommitHash = ?, lastCommitMsg = ? WHERE serviceDir = ?", hash, msg, serviceDir)
 	return err
 }
