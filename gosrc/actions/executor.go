@@ -83,12 +83,17 @@ func SetupProjectFolder(cfg *parser.Config) error {
 	return nil
 }
 
-// GrantSudoPrivileges creates a restricted sudoers entry for the service user (IF-6 expanded whitelist).
+// GrantSudoPrivileges creates a temporary sudoers entry that grants NOPASSWD: ALL
+// for the service user for the duration of install.sh execution.
+// The entry is removed immediately after the script completes (via defer).
+// We intentionally grant ALL here (not just the whitelist) because install scripts
+// legitimately need broad access: package managers, version managers (n, nvm),
+// and any tools they download at runtime. The whitelist is too restrictive for install time.
 func GrantSudoPrivileges(username string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
-	content := fmt.Sprintf("%s ALL=(ALL) NOPASSWD: %s\n", username, GetWhiteListForSUDO())
+	content := fmt.Sprintf("%s ALL=(ALL) NOPASSWD: ALL\n", username)
 	sudoersPath := fmt.Sprintf("/etc/sudoers.d/%s", username)
 	return os.WriteFile(sudoersPath, []byte(content), 0440)
 }
@@ -278,20 +283,35 @@ func RunDeployment(cfg *parser.Config) error {
 
 			// Determine sudo authentication strategy BEFORE building env so that
 			// SUDO_ASKPASS is set correctly in the child process environment.
-			askPassValue := "/bin/false" // default: block interactive prompts
+			askPassValue := "" // will be set below for both strategies
 			if cfg.SudoPass != "" {
-				// Strategy A: temp askpass.sh helper. install.sh must use `sudo -A`.
+				// Strategy A: real password via askpass.sh helper.
+				// install.sh must use `sudo -A` to pick up SUDO_ASKPASS.
 				askPassPath := filepath.Join(logDir, "askpass.sh")
 				helperContent := fmt.Sprintf("#!/bin/bash\necho '%s'\n", cfg.SudoPass)
 				if err := os.WriteFile(askPassPath, []byte(helperContent), 0700); err != nil {
 					logger.Error(fmt.Sprintf("⚠️ Failed to write askpass helper: %v", err), cfg)
 				} else {
+					// Chown to the service user so sudo can execute it as that user
+					if su, err := user.Lookup(cfg.ServiceUser); err == nil {
+						uid, _ := strconv.Atoi(su.Uid)
+						gid, _ := strconv.Atoi(su.Gid)
+						os.Chown(askPassPath, uid, gid)
+					}
 					defer os.Remove(askPassPath)
 					askPassValue = askPassPath
 					logger.Info("🔑 Using SudoPass via ASKPASS helper for install.sh", cfg)
 				}
 			} else {
-				// Strategy B: grant JIT NOPASSWD entry in /etc/sudoers.d/.
+				// Strategy B: JIT NOPASSWD entry in /etc/sudoers.d/.
+				// We still need a dummy askpass so `sudo -A` doesn't fail with
+				// "no askpass program specified" before sudo even checks sudoers.
+				// For NOPASSWD entries sudo never uses the password output.
+				dummyPath := filepath.Join(logDir, "askpass_nopass.sh")
+				if err := os.WriteFile(dummyPath, []byte("#!/bin/bash\necho ''\n"), 0755); err == nil {
+					defer os.Remove(dummyPath)
+					askPassValue = dummyPath
+				}
 				if err := GrantSudoPrivileges(cfg.ServiceUser); err != nil {
 					logger.Error(fmt.Sprintf("⚠️ JIT Sudo failed: %v", err), cfg)
 				} else {
@@ -300,11 +320,9 @@ func RunDeployment(cfg *parser.Config) error {
 				}
 			}
 
-
 			// Build env AFTER askpass is ready so SUDO_ASKPASS has the correct value.
 			env := append(os.Environ(),
 				"DEBIAN_FRONTEND=noninteractive",
-				"SUDO_ASKPASS="+askPassValue,
 				"UCF_FORCE_CONFNEW=1",
 				"PYTHONUNBUFFERED=1",
 				"PORT="+fmt.Sprintf("%d", cfg.Webhook),
@@ -313,16 +331,32 @@ func RunDeployment(cfg *parser.Config) error {
 				"CICD_SERVICE_NAME="+cfg.ServiceName,
 				"CICD_SERVICE_DIR="+cfg.ServiceDir,
 			)
+			// Only set SUDO_ASKPASS when using the askpass helper strategy.
+			// For JIT NOPASSWD mode, leaving it unset avoids breaking `sudo -A`.
+			if askPassValue != "" {
+				env = append(env, "SUDO_ASKPASS="+askPassValue)
+			}
+
 			logger.Info(fmt.Sprintf("📋 Config for this deployment: %s", cfg.String()), cfg)
 
 			os.Chmod(installScript, 0755)
 
+			// Patch the install script to inject set -e / set -o pipefail if missing.
+			// This ensures command failures inside install.sh cause a non-zero exit,
+			// so the executor correctly reports deployment failure instead of success.
+			patchedScript := filepath.Join(logDir, "install_patched.sh")
+			scriptToRun, _ := patchShellScript(installScript, patchedScript)
+			if scriptToRun == patchedScript {
+				defer os.Remove(patchedScript)
+				logger.Info("🩹 install.sh patched: injected set -e + set -o pipefail", cfg)
+			}
 
 			// F6: Run with timeout via context
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 
-			cmd := exec.CommandContext(ctx, "bash", installScript)
+			cmd := exec.CommandContext(ctx, "bash", scriptToRun)
+
 			cmd.Dir = codebasePath
 			cmd.Stdout = logFile
 			cmd.Stderr = logFile
@@ -333,7 +367,11 @@ func RunDeployment(cfg *parser.Config) error {
 				uid, _ := strconv.Atoi(u.Uid)
 				gid, _ := strconv.Atoi(u.Gid)
 				setPlatformAttributes(cmd, uint32(uid), uint32(gid))
+				// Set HOME and USER so scripts resolve ~/ to the service user's
+				// home directory, not /root (which is inherited from the root process).
+				cmd.Env = append(cmd.Env, "HOME="+u.HomeDir, "USER="+u.Username)
 			}
+
 			prepareProcessGroup(cmd)
 
 			if err := cmd.Run(); err != nil {
@@ -577,6 +615,17 @@ func FullDeployPipeline(cfg *parser.Config, commitHash, commitMsg string) {
 		logger.Error("Deployment Failed: "+err.Error(), cfg)
 		database.SetDeployStatusByDir(cfg.ServiceDir, "failed")
 		Notify(cfg, "🔥 Build Failed", fmt.Sprintf("Deployment script or installation failed for '%s': %v", cfg.ServiceName, err))
+
+		// Auto-rollback if we have a previous good commit
+		if projectID > 0 {
+			prevHash, errPrev := database.GetPreviousCurrentCommit(projectID)
+			if errPrev == nil && prevHash != "" && prevHash != commitHash {
+				logger.Warn(fmt.Sprintf("⏪ Auto-rolling back to previous stable commit %s due to build failure...", truncHash(prevHash)), cfg)
+				Notify(cfg, "⚠️ Build Failure Rollback", fmt.Sprintf("Service '%s' failed to build. Auto-rolling back to previous commit %s.", cfg.ServiceName, truncHash(prevHash)))
+				RollbackToCommit(cfg, prevHash)
+				return
+			}
+		}
 		return
 	}
 

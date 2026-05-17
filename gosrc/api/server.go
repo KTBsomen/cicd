@@ -366,19 +366,21 @@ func StartUnifiedServer(cfg *parser.Config) {
 			return c.Status(404).SendString("Project not found")
 		}
 
+		// Use *string pointers: nil = "not sent, keep current value"
+		//                        "" = "explicitly cleared"
 		type UpdateRequest struct {
-			RepoURL       string `json:"repo_url"`
-			Branch        string `json:"branch"`
-			ServiceName   string `json:"service_name"`
-			ServiceUser   string `json:"service_user"`
-			AdminEmail    string `json:"admin_email"`
-			GitUsername   string `json:"git_username"`
-			GitPassword   string `json:"git_password"`
-			WebhookPort   int    `json:"webhook_port"`
-			PublicIP      string `json:"public_ip"`
-			SudoPass      string `json:"sudo_pass"`
-			WebhookSecret string `json:"webhook_secret"`
-			MongoDBURI    string `json:"mongodb_uri"`
+			RepoURL       *string `json:"repo_url"`
+			Branch        *string `json:"branch"`
+			ServiceName   *string `json:"service_name"`
+			ServiceUser   *string `json:"service_user"`
+			AdminEmail    *string `json:"admin_email"`
+			GitUsername   *string `json:"git_username"`
+			GitPassword   *string `json:"git_password"`
+			WebhookPort   *int    `json:"webhook_port"`
+			PublicIP      *string `json:"public_ip"`
+			SudoPass      *string `json:"sudo_pass"`
+			WebhookSecret *string `json:"webhook_secret"`
+			MongoDBURI    *string `json:"mongodb_uri"`
 		}
 
 		var req UpdateRequest
@@ -386,54 +388,35 @@ func StartUnifiedServer(cfg *parser.Config) {
 			return c.Status(400).SendString("Invalid request format")
 		}
 
-		// Model after existing but update fields
+		// Model after existing but update only sent fields
 		appCfg, err := project.ToConfig()
 		if err != nil {
 			return c.Status(500).SendString(err.Error())
 		}
 
-		if req.RepoURL != "" {
-			appCfg.RepoURL = req.RepoURL
-		}
-		if req.Branch != "" {
-			appCfg.Branch = req.Branch
-		}
-		if req.ServiceName != "" {
-			appCfg.ServiceName = req.ServiceName
-		}
-		if req.ServiceUser != "" {
-			appCfg.ServiceUser = req.ServiceUser
-		}
-		if req.AdminEmail != "" {
-			appCfg.AdminEmail = req.AdminEmail
-		}
-		if req.GitUsername != "" {
-			appCfg.GitUsername = req.GitUsername
-		}
-		if req.GitPassword != "" {
-			appCfg.GitPassword = req.GitPassword
-		}
-		if req.PublicIP != "" {
-			appCfg.PublicIP = req.PublicIP
-		}
-		if req.SudoPass != "" {
-			appCfg.SudoPass = req.SudoPass
-		}
-		if req.WebhookSecret != "" {
-			appCfg.WebhookSecret = req.WebhookSecret
-		}
-		if req.MongoDBURI != "" {
-			appCfg.MongoDBURI = req.MongoDBURI
-		}
+		// For each field: if the pointer is non-nil (field was sent), apply the value.
+		// An empty string explicitly clears the field (e.g., removing SudoPass).
+		if req.RepoURL       != nil { appCfg.RepoURL       = *req.RepoURL }
+		if req.Branch        != nil { appCfg.Branch        = *req.Branch }
+		if req.ServiceName   != nil { appCfg.ServiceName   = *req.ServiceName }
+		if req.ServiceUser   != nil { appCfg.ServiceUser   = *req.ServiceUser }
+		if req.AdminEmail    != nil { appCfg.AdminEmail    = *req.AdminEmail }
+		if req.GitUsername   != nil { appCfg.GitUsername   = *req.GitUsername }
+		if req.GitPassword   != nil { appCfg.GitPassword   = *req.GitPassword }
+		if req.PublicIP      != nil { appCfg.PublicIP      = *req.PublicIP }
+		if req.SudoPass      != nil { appCfg.SudoPass      = *req.SudoPass }
+		if req.WebhookSecret != nil { appCfg.WebhookSecret = *req.WebhookSecret }
+		if req.MongoDBURI    != nil { appCfg.MongoDBURI    = *req.MongoDBURI }
 
 		// Port conflict check
-		if req.WebhookPort > 0 {
-			existing, _ := database.CheckPortConflict(req.WebhookPort, project.ID)
+		if req.WebhookPort != nil && *req.WebhookPort > 0 {
+			existing, _ := database.CheckPortConflict(*req.WebhookPort, project.ID)
 			if existing != "" {
-				return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("Port %d already in use by project '%s'", req.WebhookPort, existing)})
+				return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("Port %d already in use by project '%s'", *req.WebhookPort, existing)})
 			}
-			appCfg.Webhook = req.WebhookPort
+			appCfg.Webhook = *req.WebhookPort
 		}
+
 
 		if err := database.UpdateProject(id, appCfg); err != nil {
 			return c.Status(500).SendString(err.Error())

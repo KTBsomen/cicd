@@ -105,8 +105,15 @@ func StartAppProcess(cfg *parser.Config) error {
 	// EC-5: Ensure the script is executable
 	os.Chmod(runScript, 0755)
 
+	// Patch the run script to inject safety flags (set -e / pipefail) and sudo -A normalization if present
+	patchedRunScript := filepath.Join(cfg.ServiceDir, ".cicdlog", "run_patched.sh")
+	scriptToRun, _ := patchShellScript(runScript, patchedRunScript)
+	if scriptToRun == patchedRunScript {
+		logger.Info("🩹 run.sh patched: injected set -e + set -o pipefail", cfg)
+	}
+
 	// 2. Prepare the command
-	cmd := exec.Command("bash", runScript)
+	cmd := exec.Command("bash", scriptToRun)
 	cmd.Dir = codebasePath
 
 	// Direct logs to the project's deploy.log
