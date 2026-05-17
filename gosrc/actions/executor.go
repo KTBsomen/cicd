@@ -88,15 +88,8 @@ func GrantSudoPrivileges(username string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
-	whitelist := "/usr/bin/apt, /usr/bin/apt-get, /usr/bin/systemctl, /usr/bin/service, " +
-		"/usr/bin/dnf, /usr/bin/zypper, /usr/bin/pacman, /usr/bin/yum, " +
-		"/usr/bin/git, /usr/bin/curl, /usr/bin/wget, /usr/bin/unzip, /usr/bin/tar, " +
-		"/usr/bin/node, /usr/bin/npm, /usr/bin/npx, " +
-		"/usr/bin/tee, /usr/bin/mkdir, /usr/bin/cp, /usr/bin/mv, " +
-		"/usr/bin/chmod, /usr/bin/chown, /usr/sbin/caddy, /usr/bin/caddy, " +
-		"/usr/bin/pm2, /usr/bin/redis-server, /usr/bin/redis-cli"
-	content := fmt.Sprintf("%s ALL=(ALL) NOPASSWD: %s\n", username, whitelist)
-	sudoersPath := fmt.Sprintf("/etc/sudoers.d/cicd-%s", username)
+	content := fmt.Sprintf("%s ALL=(ALL) NOPASSWD: %s\n", username, GetWhiteListForSUDO())
+	sudoersPath := fmt.Sprintf("/etc/sudoers.d/%s", username)
 	return os.WriteFile(sudoersPath, []byte(content), 0440)
 }
 
@@ -104,7 +97,7 @@ func RemoveSudoPrivileges(username string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
-	return os.Remove(fmt.Sprintf("/etc/sudoers.d/cicd-%s", username))
+	return os.Remove(fmt.Sprintf("/etc/sudoers.d/%s", username))
 }
 
 func GetFileHash(filePath string) (string, error) {
@@ -283,9 +276,35 @@ func RunDeployment(cfg *parser.Config) error {
 			// F11: Write INSTALL separator
 			writeSeparator(logFile, "📦 INSTALL PHASE", cfg.ServiceName)
 
+			// Determine sudo authentication strategy BEFORE building env so that
+			// SUDO_ASKPASS is set correctly in the child process environment.
+			askPassValue := "/bin/false" // default: block interactive prompts
+			if cfg.SudoPass != "" {
+				// Strategy A: temp askpass.sh helper. install.sh must use `sudo -A`.
+				askPassPath := filepath.Join(logDir, "askpass.sh")
+				helperContent := fmt.Sprintf("#!/bin/bash\necho '%s'\n", cfg.SudoPass)
+				if err := os.WriteFile(askPassPath, []byte(helperContent), 0700); err != nil {
+					logger.Error(fmt.Sprintf("⚠️ Failed to write askpass helper: %v", err), cfg)
+				} else {
+					defer os.Remove(askPassPath)
+					askPassValue = askPassPath
+					logger.Info("🔑 Using SudoPass via ASKPASS helper for install.sh", cfg)
+				}
+			} else {
+				// Strategy B: grant JIT NOPASSWD entry in /etc/sudoers.d/.
+				if err := GrantSudoPrivileges(cfg.ServiceUser); err != nil {
+					logger.Error(fmt.Sprintf("⚠️ JIT Sudo failed: %v", err), cfg)
+				} else {
+					defer RemoveSudoPrivileges(cfg.ServiceUser)
+					logger.Info("🔑 Using JIT NOPASSWD sudo for install.sh", cfg)
+				}
+			}
+
+
+			// Build env AFTER askpass is ready so SUDO_ASKPASS has the correct value.
 			env := append(os.Environ(),
 				"DEBIAN_FRONTEND=noninteractive",
-				"SUDO_ASKPASS=/bin/false",
+				"SUDO_ASKPASS="+askPassValue,
 				"UCF_FORCE_CONFNEW=1",
 				"PYTHONUNBUFFERED=1",
 				"PORT="+fmt.Sprintf("%d", cfg.Webhook),
@@ -294,22 +313,10 @@ func RunDeployment(cfg *parser.Config) error {
 				"CICD_SERVICE_NAME="+cfg.ServiceName,
 				"CICD_SERVICE_DIR="+cfg.ServiceDir,
 			)
-			logger.Info(fmt.Sprintf("📋 sudo pass: %s", cfg.SudoPass), cfg)
-			if cfg.SudoPass != "" {
-				askPassPath := filepath.Join(logDir, "askpass.sh")
-				helperContent := fmt.Sprintf("#!/bin/bash\necho '%s'\n", cfg.SudoPass)
-				os.WriteFile(askPassPath, []byte(helperContent), 0700)
-				defer os.Remove(askPassPath)
-				os.Setenv("SUDO_ASKPASS", askPassPath)
-			} else {
-				if err := GrantSudoPrivileges(cfg.ServiceUser); err != nil {
-					logger.Error(fmt.Sprintf("⚠️ JIT Sudo failed: %v", err), cfg)
-				} else {
-					defer RemoveSudoPrivileges(cfg.ServiceUser)
-				}
-			}
+			logger.Info(fmt.Sprintf("📋 Config for this deployment: %s", cfg.String()), cfg)
 
 			os.Chmod(installScript, 0755)
+
 
 			// F6: Run with timeout via context
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)

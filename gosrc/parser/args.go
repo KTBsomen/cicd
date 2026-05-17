@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -259,26 +258,22 @@ func (c *Config) validateRequirements() {
 }
 
 func (c *Config) String() string {
-	var argsBuilder strings.Builder
-	flag.VisitAll(func(f *flag.Flag) {
-		fmt.Fprintf(&argsBuilder, "--%s=%v ", f.Name, f.Value)
-	})
-	return strings.TrimSpace(argsBuilder.String())
-}
-
-// GetProjectPath calculates the final absolute path for the project files
-func (c *Config) GetProjectPath() string {
-	// Normalize to forward slashes for consistency across platforms
-	base := filepath.ToSlash(filepath.Clean(c.ServiceDir))
-
-	// SCENARIO 1: If the user specified "/home/", we use the ServiceUser's home
-	if base == "/home" || base == "home" {
-		if c.ServiceUser == "root" {
-			return "/root/" + c.ServiceName
-		}
-		return "/home/" + c.ServiceUser + "/" + c.ServiceName
+	sudoStatus := "EMPTY"
+	if c.SudoPass != "" {
+		sudoStatus = "SET"
 	}
-
-	// SCENARIO 2: If it's a custom path, we use it as the base
-	return filepath.ToSlash(filepath.Join(base, c.ServiceName))
+	smtpStatus := "EMPTY"
+	if c.SMTPPass != "" {
+		smtpStatus = "SET"
+	}
+	return fmt.Sprintf(
+		"service-name=%s repo-url=%s branch=%s service-dir=%s service-user=%s "+
+			"webhook=%d admin-email=%s public-ip=%s notify-url=%s "+
+			"deploy-timeout=%d smtp-host=%s smtp-port=%d smtp-user=%s smtp-pass=[%s] "+
+			"git-username=%s sudo-pass=[%s] mongodb-uri=%s",
+		c.ServiceName, c.RepoURL, c.Branch, c.ServiceDir, c.ServiceUser,
+		c.Webhook, c.AdminEmail, c.PublicIP, c.NotifyURL,
+		c.DeployTimeout, c.SMTPHost, c.SMTPPort, c.SMTPUser, smtpStatus,
+		c.GitUsername, sudoStatus, c.MongoDBURI,
+	)
 }

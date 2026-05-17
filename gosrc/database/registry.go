@@ -490,6 +490,8 @@ func GetProjectByName(name string) (*Project, error) {
 }
 
 // ToConfig converts a Project row to a runtime Config. Returns error instead of panic (IF-4).
+// It also merges gateway-level settings (SMTP, notify, timeout, etc.) from the settings table
+// so that every caller automatically gets a fully populated config.
 func (p *Project) ToConfig() (*parser.Config, error) {
 	wh, _ := strconv.Atoi(p.Webhook)
 	var missing []string
@@ -509,7 +511,8 @@ func (p *Project) ToConfig() (*parser.Config, error) {
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("project %d is missing required fields: %s", p.ID, strings.Join(missing, ", "))
 	}
-	return &parser.Config{
+
+	cfg := &parser.Config{
 		ServiceName:   p.ServiceName,
 		ServiceUser:   p.ServiceUser,
 		User:          p.User,
@@ -524,7 +527,48 @@ func (p *Project) ToConfig() (*parser.Config, error) {
 		SudoPass:      p.SudoPass,
 		WebhookSecret: p.WebhookSecret,
 		MongoDBURI:    p.MongoDBURI,
-	}, nil
+	}
+
+	// Enrich with gateway-level settings from the settings table.
+	// Only fills fields that are empty/zero in the per-project row.
+	loadGlobalInto(cfg)
+
+	return cfg, nil
+}
+
+// loadGlobalInto reads the single settings row and fills gateway-level fields
+// into a per-project config — but only when the per-project value is empty/zero.
+// This ensures SMTP, notifications, and timeouts are always available during deployment.
+func loadGlobalInto(cfg *parser.Config) {
+	if DB == nil {
+		return
+	}
+	var smtpHost, smtpUser, smtpPass, notifyURL, adminEmail, publicIP, mongoURI, webhookSecret string
+	var smtpPort, deployTimeout int
+	err := DB.QueryRow(`
+		SELECT COALESCE(smtp_host,''), COALESCE(smtp_port,587),
+		       COALESCE(smtp_user,''), COALESCE(smtp_pass,''),
+		       COALESCE(notify_url,''), COALESCE(admin_email,''),
+		       COALESCE(deploy_timeout,1800), COALESCE(public_ip,''),
+		       COALESCE(mongodb_uri,''), COALESCE(webhook_secret,'')
+		FROM settings WHERE id = 1`).Scan(
+		&smtpHost, &smtpPort, &smtpUser, &smtpPass,
+		&notifyURL, &adminEmail, &deployTimeout, &publicIP,
+		&mongoURI, &webhookSecret,
+	)
+	if err != nil {
+		return // no settings row yet — first boot, skip silently
+	}
+	if cfg.SMTPHost      == "" { cfg.SMTPHost      = smtpHost }
+	if cfg.SMTPPort      == 0  { cfg.SMTPPort      = smtpPort }
+	if cfg.SMTPUser      == "" { cfg.SMTPUser      = smtpUser }
+	if cfg.SMTPPass      == "" { cfg.SMTPPass      = smtpPass }
+	if cfg.NotifyURL     == "" { cfg.NotifyURL     = notifyURL }
+	if cfg.AdminEmail    == "" { cfg.AdminEmail    = adminEmail }
+	if cfg.DeployTimeout == 0  { cfg.DeployTimeout = deployTimeout }
+	if cfg.PublicIP      == "" { cfg.PublicIP      = publicIP }
+	if cfg.MongoDBURI    == "" { cfg.MongoDBURI    = mongoURI }
+	if cfg.WebhookSecret == "" { cfg.WebhookSecret = webhookSecret }
 }
 
 // GetAllDeploymentPaths retrieves all currently used project directories

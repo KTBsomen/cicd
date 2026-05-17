@@ -99,22 +99,15 @@ func StartUnifiedServer(cfg *parser.Config) {
 			return c.Status(200).SendString("no commit hash")
 		}
 
-		// Step 4: Build project-specific config from DB row
+		// Step 4: Build project-specific config from DB row.
+		// Global settings (SMTP, NotifyURL, DeployTimeout, etc.) are now
+		// automatically merged inside ToConfig() via loadGlobalInto().
 		projectCfg, err := dbProject.ToConfig()
 		if err != nil {
 			logger.Error("Webhook: failed to build project config: "+err.Error(), cfg)
 			return c.Status(500).SendString("project config error")
 		}
-		// Step 5: Merge global settings from cfg (already loaded from DB via LoadGlobalSettings)
-		// These fields are not stored per-project, they live in the settings table
-		projectCfg.MongoDBURI = cfg.MongoDBURI
-		projectCfg.WebhookSecret = cfg.WebhookSecret
-		projectCfg.SMTPHost = cfg.SMTPHost
-		projectCfg.SMTPPort = cfg.SMTPPort
-		projectCfg.SMTPUser = cfg.SMTPUser
-		projectCfg.SMTPPass = cfg.SMTPPass
-		projectCfg.NotifyURL = cfg.NotifyURL
-		projectCfg.DeployTimeout = cfg.DeployTimeout
+
 
 		// F5: Check if project is pinned — record commit but skip deployment
 		// (FullDeployPipeline calls AddCommitToHistory internally, so we don't here)
@@ -446,7 +439,16 @@ func StartUnifiedServer(cfg *parser.Config) {
 			return c.Status(500).SendString(err.Error())
 		}
 
-		return c.JSON(fiber.Map{"message": "Project updated successfully"})
+		// Trigger a redeploy with the updated config so changes take effect immediately.
+		// This is equivalent to clicking "Deploy" after saving.
+		actions.EnqueueDeployment(appCfg, "", "", func(cfg *parser.Config, h, m string) {
+			actions.SyncRepo(cfg)
+			actions.RunDeployment(cfg)
+		})
+
+		return c.JSON(fiber.Map{
+			"message": "Project updated and redeployment triggered",
+		})
 	})
 
 	api.Get("/projects/:id/logs", func(c fiber.Ctx) error {
