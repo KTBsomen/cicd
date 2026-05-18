@@ -134,17 +134,7 @@ func main() {
 	// 3. Watch MongoDB for remote config changes
 	go database.WatchChanges(&config, func(project *parser.Config) {
 		logger.Info(fmt.Sprintf("🔔 REMOTE TRIGGER: Deployment signal for %s", project.ServiceName), project)
-		actions.EnqueueDeployment(project, "", "", func(cfg *parser.Config, hash, msg string) {
-			if err := actions.SyncRepo(cfg); err != nil {
-				logger.Error("Sync Failed: "+err.Error(), cfg)
-				return
-			}
-			if err := actions.RunDeployment(cfg); err != nil {
-				logger.Error("Execution Failed: "+err.Error(), cfg)
-				return
-			}
-			logger.Info("✅ DEPLOYMENT CYCLE COMPLETE for "+cfg.ServiceName, cfg)
-		})
+		actions.EnqueueDeployment(project, "", "", actions.FullDeployPipeline)
 	})
 
 	// Block on signal

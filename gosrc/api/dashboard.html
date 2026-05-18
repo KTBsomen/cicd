@@ -351,12 +351,42 @@
                             production fleet.</p>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                    <!-- EMPTY STATE: First install, no fleet nodes yet (edge case if local IP unavailable) -->
+                    <template x-if="fleet.length === 0">
+                        <div class="glass p-16 rounded-[3rem] border border-dashed border-cyan-500/20 flex flex-col items-center justify-center text-center max-w-lg mx-auto">
+                            <div class="w-20 h-20 bg-cyan-500/10 rounded-3xl flex items-center justify-center mb-8 border border-cyan-500/20">
+                                <svg class="w-10 h-10 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v4a2 2 0 01-2 2" />
+                                </svg>
+                            </div>
+                            <h2 class="text-2xl font-black text-white mb-3 tracking-tight">No Nodes Detected</h2>
+                            <p class="text-zinc-500 text-sm font-medium mb-8 leading-relaxed">This is your first launch. Configure your <span class="text-amber-400 font-bold">MongoDB URI</span> in Infrastructure settings so nodes can register, or add your first project to this node directly.</p>
+                            <div class="flex flex-col gap-3 w-full max-w-xs">
+                                <button @click="newProject.public_ip = settings.public_ip || '127.0.0.1'; showCreateModal = true"
+                                    class="w-full py-4 bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 rounded-2xl text-[11px] font-black uppercase tracking-widest text-cyan-400 transition-all">
+                                    ＋ Register First Project
+                                </button>
+                                <button @click="fetchSettings(); showSettingsModal = true"
+                                    class="w-full py-4 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 rounded-2xl text-[11px] font-black uppercase tracking-widest text-amber-400 transition-all">
+                                    ⚙ Configure Infrastructure
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div x-show="fleet.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                         <template x-for="ip in fleet">
                             <div @click="selectServer(ip)"
-                                class="glass p-8 rounded-[3rem] border border-white/5 hover:border-cyan-500/30 hover:bg-white/[0.02] transition-all group cursor-pointer relative overflow-hidden">
+                                class="glass p-8 rounded-[3rem] border border-white/5 hover:border-cyan-500/30 hover:bg-white/[0.02] transition-all group cursor-pointer relative overflow-hidden"
+                                :class="ip === settings.public_ip ? 'border-cyan-500/20 bg-cyan-500/[0.02]' : ''">
                                 <div
                                     class="absolute -top-12 -right-12 w-32 h-32 bg-cyan-500/5 rounded-full blur-3xl group-hover:bg-cyan-500/10 transition-colors">
+                                </div>
+
+                                <!-- LOCAL NODE badge -->
+                                <div x-show="ip === settings.public_ip"
+                                    class="absolute top-5 right-5 bg-cyan-500/20 text-cyan-400 text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-1 rounded-full border border-cyan-500/30">
+                                    This Node
                                 </div>
 
                                 <div class="relative z-10">
@@ -370,8 +400,8 @@
                                     </div>
 
                                     <h3 class="text-2xl font-black text-white mb-2" x-text="ip"></h3>
-                                    <p class="text-xs font-black text-zinc-600 uppercase tracking-widest mb-8">Edge
-                                        Deployment Node</p>
+                                    <p class="text-xs font-black text-zinc-600 uppercase tracking-widest mb-8"
+                                        x-text="ip === settings.public_ip ? 'Local Gateway Node' : 'Edge Deployment Node'"></p>
 
                                     <div class="flex items-center justify-between pt-6 border-t border-white/5">
                                         <div class="flex items-center gap-2">
@@ -389,16 +419,17 @@
                             </div>
                         </template>
 
-                        <div
-                            class="p-8 rounded-[3rem] border border-dashed border-white/10 flex flex-col items-center justify-center text-center group hover:border-white/20 transition-all cursor-not-allowed">
+                        <!-- Quick-register button always visible in fleet grid -->
+                        <div @click="newProject.public_ip = settings.public_ip || (fleet.length > 0 ? fleet[0] : ''); showCreateModal = true"
+                            class="p-8 rounded-[3rem] border border-dashed border-cyan-500/20 flex flex-col items-center justify-center text-center group hover:border-cyan-500/40 hover:bg-cyan-500/[0.03] transition-all cursor-pointer">
                             <div
-                                class="w-12 h-12 rounded-full border border-dashed border-white/10 flex items-center justify-center mb-4 text-zinc-700">
+                                class="w-12 h-12 rounded-full border border-dashed border-cyan-500/30 flex items-center justify-center mb-4 text-cyan-700 group-hover:text-cyan-400 group-hover:border-cyan-400/50 transition-all">
                                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                                 </svg>
                             </div>
-                            <p class="text-[10px] font-black text-zinc-700 uppercase tracking-widest">Pro: Add Cloud
-                                Node</p>
+                            <p class="text-[10px] font-black text-zinc-600 group-hover:text-cyan-500 uppercase tracking-widest transition-colors">Register New App</p>
+                            <p class="text-[9px] text-zinc-700 mt-1">Deploy to this node</p>
                         </div>
                     </div>
                 </div>
@@ -1397,8 +1428,14 @@
                 async fetchFleet() {
                     try {
                         const res = await this.apiCall('/api/fleet');
-                        this.fleet = await res.json();
-                    } catch (e) { }
+                        const data = await res.json();
+                        this.fleet = Array.isArray(data) ? data : [];
+                        // Pre-fill newProject.public_ip with the local node IP on first load
+                        // so users on a fresh install can register a project right away
+                        if (this.fleet.length > 0 && !this.newProject.public_ip) {
+                            this.newProject.public_ip = this.settings.public_ip || this.fleet[0];
+                        }
+                    } catch (e) { this.fleet = []; }
                 },
 
                 async refreshData() {

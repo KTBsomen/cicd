@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -66,6 +68,16 @@ var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`
 
 func isValid(email string) bool {
 	return emailRegex.MatchString(email)
+}
+
+// generate secret key
+func GenerateSecretKey() string {
+	b := make([]byte, 16) // 16 bytes = 32 hex chars
+	if _, err := rand.Read(b); err != nil {
+		fmt.Println("failed to generate random secret key: ", err)
+		return ""
+	}
+	return hex.EncodeToString(b)
 }
 
 // GetPublicIP attempts to find the public IP address of the machine.
@@ -170,7 +182,7 @@ func (c *Config) Parse() {
 	flag.StringVar(&c.SudoPass, "sudo-pass", "", "Sudo password for package installation")
 	flag.StringVar(&c.ServiceName, "service-name", "mycicdapp", "Name of the service")
 	flag.StringVar(&c.ServiceDir, "service-dir", "/home/", "Path of the service")
-	flag.StringVar(&c.ServiceUser, "service-user", "root", "Name of the service user")
+	flag.StringVar(&c.ServiceUser, "service-user", "", "Name of the service user")
 	flag.StringVar(&c.ServiceReset, "service-reset", "False", "True/False to delete systemd and restart")
 	flag.IntVar(&c.Webhook, "webhook", 9641, "Port number for webhook listener")
 	flag.StringVar(&c.WebhookSecret, "webhook-secret", "", "GitHub Webhook secret")
@@ -190,6 +202,9 @@ func (c *Config) Parse() {
 
 	if c.PublicIP == "" {
 		c.PublicIP = GetPublicIP()
+	}
+	if c.RepoURL == "" && c.WebhookSecret == "" {
+		c.WebhookSecret = GenerateSecretKey()
 	}
 }
 
@@ -223,12 +238,22 @@ func (c *Config) validateRequirements() {
 	if c.RepoURL == "" {
 		fmt.Println(text.FgHiCyan.Sprint("🛰️  Starting in GATEWAY MODE (Passive Management)"))
 		fmt.Println(text.Faint.Sprint("No deployment flags provided. Use the Dashboard to create projects.\n"))
+		if c.MongoDBURI == "" {
+			fmt.Println(text.FgHiYellow.Sprint("⚠️ MongoDB URI is missing. Running Local only mode."))
+			fmt.Println(text.Faint.Sprint("To enable multi server fleet sync consider adding a mongodb atlas url.\n"))
+			fmt.Println(text.Faint.Sprint("MongoDB atlas provides free tier which is enough for this tool.\nSign up here : https://www.mongodb.com/cloud/atlas/register"))
+
+		}
+
 		return
 	}
 
 	var missing []string
 	if c.MongoDBURI == "" {
-		missing = append(missing, "--mongodb-uri")
+		fmt.Println(text.FgHiYellow.Sprint("⚠️ MongoDB URI is missing. Running Local only mode."))
+		fmt.Println(text.Faint.Sprint("To enable multi server fleet sync consider adding a mongodb atlas url.\n"))
+		fmt.Println(text.Faint.Sprint("MongoDB atlas provides free tier which is enough for this tool.\nSign up here : https://www.mongodb.com/cloud/atlas/register"))
+
 	}
 	if c.AdminEmail == "" {
 		missing = append(missing, "--admin-email")

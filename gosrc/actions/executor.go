@@ -631,9 +631,6 @@ func FullDeployPipeline(cfg *parser.Config, commitHash, commitMsg string) {
 
 	database.UpdateCommitHashLocal(cfg.ServiceDir, commitHash)
 	database.UpdateLastCommitInfo(cfg.ServiceDir, commitHash, commitMsg)
-	if cfg.MongoDBURI != "" {
-		go database.UpdateCommitHash(cfg, commitHash)
-	}
 
 	go PostDeployHealthCheck(cfg, commitHash, trigger, 0)
 }

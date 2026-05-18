@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"time"
 
@@ -108,7 +109,6 @@ func StartUnifiedServer(cfg *parser.Config) {
 			return c.Status(500).SendString("project config error")
 		}
 
-
 		// F5: Check if project is pinned — record commit but skip deployment
 		// (FullDeployPipeline calls AddCommitToHistory internally, so we don't here)
 		if dbProject.IsPinned {
@@ -121,7 +121,11 @@ func StartUnifiedServer(cfg *parser.Config) {
 		// Step 6: Update last commit info on the project row, then enqueue.
 		// AddCommitToHistory is called inside FullDeployPipeline — do NOT call it here too.
 		database.UpdateLastCommitInfo(dbProject.ServiceDir, data.Hash, data.CommitMsg)
-		actions.EnqueueDeployment(projectCfg, data.Hash, data.CommitMsg, actions.FullDeployPipeline)
+		if projectCfg.MongoDBURI == "" {
+			actions.EnqueueDeployment(projectCfg, data.Hash, data.CommitMsg, actions.FullDeployPipeline)
+		}
+		go database.UpdateCommitHash(projectCfg, data.Hash)
+
 		logger.Info(fmt.Sprintf("🚀 WEBHOOK TRIGGERED: %s (Commit: %s)", projectCfg.ServiceName, data.Hash[:8]), projectCfg)
 		return c.SendString("Deployment initiated")
 	})
@@ -198,7 +202,18 @@ func StartUnifiedServer(cfg *parser.Config) {
 	api.Get("/fleet", func(c fiber.Ctx) error {
 		ips, err := database.GetUniqueServerIPs(cfg)
 		if err != nil {
-			return c.Status(500).SendString(err.Error())
+			// MongoDB unreachable — fall back to just the local node
+			ips = nil
+		}
+		// Always ensure this gateway's own IP is present in the fleet list
+		// so the dashboard is never empty on first install (before any MongoDB registration).
+		localIP := cfg.PublicIP
+		if localIP == "" {
+			localIP = parser.GetPublicIP()
+		}
+		found := slices.Contains(ips, localIP)
+		if !found && localIP != "" {
+			ips = append([]string{localIP}, ips...)
 		}
 		return c.JSON(ips)
 	})
@@ -396,17 +411,39 @@ func StartUnifiedServer(cfg *parser.Config) {
 
 		// For each field: if the pointer is non-nil (field was sent), apply the value.
 		// An empty string explicitly clears the field (e.g., removing SudoPass).
-		if req.RepoURL       != nil { appCfg.RepoURL       = *req.RepoURL }
-		if req.Branch        != nil { appCfg.Branch        = *req.Branch }
-		if req.ServiceName   != nil { appCfg.ServiceName   = *req.ServiceName }
-		if req.ServiceUser   != nil { appCfg.ServiceUser   = *req.ServiceUser }
-		if req.AdminEmail    != nil { appCfg.AdminEmail    = *req.AdminEmail }
-		if req.GitUsername   != nil { appCfg.GitUsername   = *req.GitUsername }
-		if req.GitPassword   != nil { appCfg.GitPassword   = *req.GitPassword }
-		if req.PublicIP      != nil { appCfg.PublicIP      = *req.PublicIP }
-		if req.SudoPass      != nil { appCfg.SudoPass      = *req.SudoPass }
-		if req.WebhookSecret != nil { appCfg.WebhookSecret = *req.WebhookSecret }
-		if req.MongoDBURI    != nil { appCfg.MongoDBURI    = *req.MongoDBURI }
+		if req.RepoURL != nil {
+			appCfg.RepoURL = *req.RepoURL
+		}
+		if req.Branch != nil {
+			appCfg.Branch = *req.Branch
+		}
+		if req.ServiceName != nil {
+			appCfg.ServiceName = *req.ServiceName
+		}
+		if req.ServiceUser != nil {
+			appCfg.ServiceUser = *req.ServiceUser
+		}
+		if req.AdminEmail != nil {
+			appCfg.AdminEmail = *req.AdminEmail
+		}
+		if req.GitUsername != nil {
+			appCfg.GitUsername = *req.GitUsername
+		}
+		if req.GitPassword != nil {
+			appCfg.GitPassword = *req.GitPassword
+		}
+		if req.PublicIP != nil {
+			appCfg.PublicIP = *req.PublicIP
+		}
+		if req.SudoPass != nil {
+			appCfg.SudoPass = *req.SudoPass
+		}
+		if req.WebhookSecret != nil {
+			appCfg.WebhookSecret = *req.WebhookSecret
+		}
+		if req.MongoDBURI != nil {
+			appCfg.MongoDBURI = *req.MongoDBURI
+		}
 
 		// Port conflict check
 		if req.WebhookPort != nil && *req.WebhookPort > 0 {
@@ -416,7 +453,6 @@ func StartUnifiedServer(cfg *parser.Config) {
 			}
 			appCfg.Webhook = *req.WebhookPort
 		}
-
 
 		if err := database.UpdateProject(id, appCfg); err != nil {
 			return c.Status(500).SendString(err.Error())
