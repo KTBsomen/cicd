@@ -26,6 +26,10 @@ func HandleCommands(cfg *parser.Config) {
 	cmd := strings.ToLower(os.Args[1])
 
 	switch cmd {
+	case "commands":
+		handleHelp()
+		os.Exit(0)
+
 	case "ls", "list":
 		handleList(cfg)
 		os.Exit(0)
@@ -85,6 +89,10 @@ func HandleCommands(cfg *parser.Config) {
 
 	case "doctor":
 		handleDoctor(cfg)
+		os.Exit(0)
+
+	case "info":
+		handleInfo(cfg)
 		os.Exit(0)
 	}
 }
@@ -447,4 +455,113 @@ func runCommand(name string, args ...string) {
 	if err != nil {
 		fmt.Printf("❌ Command failed (%s): %v\n", name, err)
 	}
+}
+
+// ═══════════════════════════════════════════════════════
+//  cicd info — Display Gateway Credentials & Guides
+// ═══════════════════════════════════════════════════════
+
+func handleInfo(cfg *parser.Config) {
+	database.InitDB(cfg)
+	database.LoadGlobalSettings(cfg)
+	PrintGatewayInfo(cfg)
+}
+
+// PrintGatewayInfo renders a highly polished, guide-style dashboard summary of the orchestrator.
+// It is shared between the first setup boot and the on-demand 'cicd info' command.
+func PrintGatewayInfo(cfg *parser.Config) {
+	token := "Not Required (Admin Email Configured)"
+	if cfg.AdminEmail == "" {
+		if t, err := database.GetOrGenerateSetupToken(); err == nil {
+			token = t
+		} else {
+			token = "Failed to load active setup token"
+		}
+	}
+
+	fmt.Println(text.FgHiCyan.Sprint("\n======================================================================"))
+	fmt.Println(text.Bold.Sprint(" 🖥️  STEP 1: ACCESS YOUR ADMIN DASHBOARD"))
+	fmt.Println("======================================================================")
+	fmt.Println(text.Faint.Sprint("  1. Open your browser and navigate to the Dashboard URL."))
+	fmt.Println(text.Faint.Sprint("  2. Copy and paste the Setup Token below to log in (expires in 15m).\n"))
+	fmt.Println(text.Faint.Sprint("  3. In the login page you have to click `USE SETUP TOKEN` button and paste the token.\n"))
+
+	t1 := table.NewWriter()
+	t1.SetOutputMirror(os.Stdout)
+	t1.AppendRow(table.Row{text.Bold.Sprint("🌐 Dashboard URL"), text.FgHiCyan.Sprintf("http://%s:%d/dashboard", cfg.PublicIP, cfg.Webhook)})
+	if cfg.AdminEmail == "" {
+		t1.AppendRow(table.Row{text.Bold.Sprint("🔑 Setup Token "), text.FgHiYellow.Sprint(token)})
+	} else {
+		t1.AppendRow(table.Row{text.Bold.Sprint("📧 Admin Email "), text.Faint.Sprint(cfg.AdminEmail)})
+	}
+	style1 := table.StyleRounded
+	style1.Color.Border = text.Colors{text.FgHiBlack}
+	t1.SetStyle(style1)
+	t1.Render()
+
+	fmt.Println(text.FgHiGreen.Sprint("\n======================================================================"))
+	fmt.Println(text.Bold.Sprint(" 🛰️  STEP 2: CONNECT GITHUB (WEBHOOK SETUP)"))
+	fmt.Println("======================================================================")
+	fmt.Println(text.Faint.Sprint("  1. Go to your GitHub repository -> Settings -> Webhooks -> Add Webhook."))
+	fmt.Println(text.Faint.Sprint("  2. Set Payload URL, select 'application/json', and paste the Secret key.\n"))
+
+	t2 := table.NewWriter()
+	t2.SetOutputMirror(os.Stdout)
+	t2.AppendRow(table.Row{text.Bold.Sprint("🔌 Payload URL  "), text.FgHiCyan.Sprintf("http://%s:%d/", cfg.PublicIP, cfg.Webhook)})
+	t2.AppendRow(table.Row{text.Bold.Sprint("⚙️  Content Type "), text.Bold.Sprint("application/json")})
+	t2.AppendRow(table.Row{text.Bold.Sprint("🔒 Secret Key   "), text.FgHiYellow.Sprint(cfg.WebhookSecret)})
+	style2 := table.StyleRounded
+	style2.Color.Border = text.Colors{text.FgHiBlack}
+	t2.SetStyle(style2)
+	t2.Render()
+
+	fmt.Println(text.FgHiYellow.Sprint("\n======================================================================"))
+	fmt.Println(text.Bold.Sprint(" 🎥 STEP 3: NEED HELP? WATCH VIDEO GUIDE"))
+	fmt.Println("======================================================================")
+	fmt.Println("  Watch the latest YouTube guide on configuring GitHub webhooks:")
+	fmt.Println("  " + text.Bold.Sprint("https://www.youtube.com/watch?v=MyEkKp3VRwo") + text.Faint.Sprint(" (GitHub Webhooks Tutorial by Behind Tools)"))
+	fmt.Println("======================================================================")
+
+	fmt.Println(text.Faint.Sprint("⚙️  SYSTEMD SERVICE MANAGEMENT:"))
+	fmt.Println("  - To view gateway info:  " + text.Bold.Sprint("cicd info"))
+	fmt.Println("  - To monitor live background logs:  " + text.Bold.Sprint("cicd log -f"))
+
+	fmt.Println("  - To check systemd service status:  " + text.Bold.Sprint("cicd status"))
+	fmt.Println("  - To view list of active services:  " + text.Bold.Sprint("cicd ls\n"))
+	fmt.Println("  - TO View all commands:             " + text.Bold.Sprintf("cicd commands"))
+}
+
+// handleHelp displays a high-fidelity table of all registered CLI commands
+func handleHelp() {
+	fmt.Println("\n" + text.BgCyan.Sprint("  CICD ORCHESTRATOR CLI COMMANDS  ") + "\n")
+
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Command", "Usage / Arguments", "Description"})
+
+	t.AppendRows([]table.Row{
+		{text.FgHiYellow.Sprint("list / ls"), "cicd list", "List all registered projects and their status"},
+		{text.FgHiYellow.Sprint("info"), "cicd info", "Print premium Command Center setup and connection links"},
+		{text.FgHiYellow.Sprint("status"), "cicd status", "Check status of the background orchestrator service"},
+		{text.FgHiYellow.Sprint("start"), "cicd start", "Start the orchestrator background service"},
+		{text.FgHiYellow.Sprint("stop"), "cicd stop", "Stop the orchestrator background service"},
+		{text.FgHiYellow.Sprint("restart"), "cicd restart", "Restart the orchestrator background service"},
+		{text.FgHiYellow.Sprint("logs / log"), "cicd log [service]", "Tail global orchestrator logs or project deploy logs"},
+		{text.FgHiYellow.Sprint("token"), "cicd token [--force]", "Retrieve or regenerate the gateway onboarding token"},
+		{text.FgHiYellow.Sprint("pin"), "cicd pin <service> <hash>", "Pin a service deployment to a specific commit hash"},
+		{text.FgHiYellow.Sprint("unpin"), "cicd unpin <service>", "Remove the pinned commit constraint from a service"},
+		{text.FgHiYellow.Sprint("history"), "cicd history <service>", "View the deployment and rollback history of a service"},
+		{text.FgHiYellow.Sprint("rollback"), "cicd rollback <service> <hash>", "Roll back a service to a previous deployment commit"},
+		{text.FgHiYellow.Sprint("reinstall"), "cicd reinstall <service>", "Force full clean reinstall of a service dependency tree"},
+		{text.FgHiYellow.Sprint("doctor"), "cicd doctor", "Run diagnostic health checks on ports, SQLite, and SMTP"},
+		{text.FgHiYellow.Sprint("uninstall"), "cicd uninstall", "Stop, disable, and clean up the orchestrator daemon"},
+		{text.FgHiYellow.Sprint("--help"), "cicd --help", "Show other project specific help command list"},
+	})
+
+	style := table.StyleRounded
+	style.Color.Header = text.Colors{text.FgHiCyan, text.Bold}
+	style.Color.Border = text.Colors{text.FgHiBlack}
+	t.SetStyle(style)
+	t.Render()
+	fmt.Println()
 }

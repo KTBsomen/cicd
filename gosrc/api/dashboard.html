@@ -353,16 +353,24 @@
 
                     <!-- EMPTY STATE: First install, no fleet nodes yet (edge case if local IP unavailable) -->
                     <template x-if="fleet.length === 0">
-                        <div class="glass p-16 rounded-[3rem] border border-dashed border-cyan-500/20 flex flex-col items-center justify-center text-center max-w-lg mx-auto">
-                            <div class="w-20 h-20 bg-cyan-500/10 rounded-3xl flex items-center justify-center mb-8 border border-cyan-500/20">
-                                <svg class="w-10 h-10 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v4a2 2 0 01-2 2" />
+                        <div
+                            class="glass p-16 rounded-[3rem] border border-dashed border-cyan-500/20 flex flex-col items-center justify-center text-center max-w-lg mx-auto">
+                            <div
+                                class="w-20 h-20 bg-cyan-500/10 rounded-3xl flex items-center justify-center mb-8 border border-cyan-500/20">
+                                <svg class="w-10 h-10 text-cyan-400" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                        d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v4a2 2 0 01-2 2" />
                                 </svg>
                             </div>
                             <h2 class="text-2xl font-black text-white mb-3 tracking-tight">No Nodes Detected</h2>
-                            <p class="text-zinc-500 text-sm font-medium mb-8 leading-relaxed">This is your first launch. Configure your <span class="text-amber-400 font-bold">MongoDB URI</span> in Infrastructure settings so nodes can register, or add your first project to this node directly.</p>
+                            <p class="text-zinc-500 text-sm font-medium mb-8 leading-relaxed">This is your first launch.
+                                Configure your <span class="text-amber-400 font-bold">MongoDB URI</span> in
+                                Infrastructure settings so nodes can register, or add your first project to this node
+                                directly.</p>
                             <div class="flex flex-col gap-3 w-full max-w-xs">
-                                <button @click="newProject.public_ip = settings.public_ip || '127.0.0.1'; showCreateModal = true"
+                                <button
+                                    @click="newProject.public_ip = settings.public_ip || '127.0.0.1'; showCreateModal = true"
                                     class="w-full py-4 bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 rounded-2xl text-[11px] font-black uppercase tracking-widest text-cyan-400 transition-all">
                                     ＋ Register First Project
                                 </button>
@@ -374,7 +382,8 @@
                         </div>
                     </template>
 
-                    <div x-show="fleet.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                    <div x-show="fleet.length > 0"
+                        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                         <template x-for="ip in fleet">
                             <div @click="selectServer(ip)"
                                 class="glass p-8 rounded-[3rem] border border-white/5 hover:border-cyan-500/30 hover:bg-white/[0.02] transition-all group cursor-pointer relative overflow-hidden"
@@ -401,7 +410,8 @@
 
                                     <h3 class="text-2xl font-black text-white mb-2" x-text="ip"></h3>
                                     <p class="text-xs font-black text-zinc-600 uppercase tracking-widest mb-8"
-                                        x-text="ip === settings.public_ip ? 'Local Gateway Node' : 'Edge Deployment Node'"></p>
+                                        x-text="ip === settings.public_ip ? 'Local Gateway Node' : 'Edge Deployment Node'">
+                                    </p>
 
                                     <div class="flex items-center justify-between pt-6 border-t border-white/5">
                                         <div class="flex items-center gap-2">
@@ -428,7 +438,9 @@
                                     <path d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                                 </svg>
                             </div>
-                            <p class="text-[10px] font-black text-zinc-600 group-hover:text-cyan-500 uppercase tracking-widest transition-colors">Register New App</p>
+                            <p
+                                class="text-[10px] font-black text-zinc-600 group-hover:text-cyan-500 uppercase tracking-widest transition-colors">
+                                Register New App</p>
                             <p class="text-[9px] text-zinc-700 mt-1">Deploy to this node</p>
                         </div>
                     </div>
@@ -625,7 +637,7 @@
                                         <p class="text-[10px] text-zinc-500 truncate mt-0.5"
                                             x-text="p.last_commit_msg || ''"></p>
                                     </div>
-                                    <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                    <div class="flex gap-2 transition-all">
                                         <button @click.stop="viewHistory(p)"
                                             class="flex-1 bg-zinc-800 hover:bg-zinc-700 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">History</button>
                                         <button @click.stop="togglePin(p)"
@@ -1129,31 +1141,44 @@
             <div
                 class="glass p-12 rounded-[3.5rem] w-full max-w-2xl border border-white/10 shadow-2xl relative z-10 overflow-y-auto max-h-[90vh]">
                 <h3 class="text-4xl font-black text-amber-400 tracking-tighter mb-4">Edit Configuration</h3>
-                <p class="text-zinc-500 text-sm mb-12 font-medium">Modify deployment parameters for <span class="text-white" x-text="editProjectData.service_name"></span></p>
+                <p class="text-zinc-500 text-sm mb-12 font-medium">Modify deployment parameters for <span
+                        class="text-white" x-text="editProjectData.service_name"></span></p>
 
                 <div class="space-y-12">
                     <section class="space-y-6">
                         <div class="flex items-center gap-3 mb-6">
                             <span class="w-8 h-[1px] bg-cyan-500/30"></span>
-                            <span class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">Source Control</span>
+                            <span class="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em]">Source
+                                Control</span>
                         </div>
                         <div class="grid grid-cols-1 gap-6">
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Repository URL</label>
-                                <input x-model="editProjectData.repo_url" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Repository
+                                    URL</label>
+                                <input x-model="editProjectData.repo_url" type="text"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
                             </div>
                             <div class="grid grid-cols-2 gap-6">
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Branch</label>
-                                    <input x-model="editProjectData.branch" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Branch</label>
+                                    <input x-model="editProjectData.branch" type="text"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
                                 </div>
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git Username</label>
-                                    <input x-model="editProjectData.git_username" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git
+                                        Username</label>
+                                    <input x-model="editProjectData.git_username" type="text"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all">
                                 </div>
                                 <div class="relative col-span-2">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git PAT / Token</label>
-                                    <input x-model="editProjectData.git_password" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Git
+                                        PAT / Token</label>
+                                    <input x-model="editProjectData.git_password" type="password" placeholder="••••••••"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all font-mono">
                                 </div>
                             </div>
                         </div>
@@ -1162,53 +1187,81 @@
                     <section class="space-y-6">
                         <div class="flex items-center gap-3 mb-6">
                             <span class="w-8 h-[1px] bg-purple-500/30"></span>
-                            <span class="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">Metadata & ID</span>
+                            <span class="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">Metadata
+                                & ID</span>
                         </div>
                         <div class="grid grid-cols-1 gap-6">
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Service Name</label>
-                                <input x-model="editProjectData.service_name" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Service
+                                    Name</label>
+                                <input x-model="editProjectData.service_name" type="text"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
                             </div>
-                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Public IP</label>
-                                <input x-model="editProjectData.public_ip" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono">
+                            <div class="relative">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Public
+                                    IP</label>
+                                <input x-model="editProjectData.public_ip" type="text"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono">
                             </div>
                             <div class="grid grid-cols-2 gap-6">
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Service User</label>
-                                    <input x-model="editProjectData.service_user" type="text" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Service
+                                        User</label>
+                                    <input x-model="editProjectData.service_user" type="text"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
                                 </div>
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook Port</label>
-                                    <input x-model.number="editProjectData.webhook_port" type="number" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook
+                                        Port</label>
+                                    <input x-model.number="editProjectData.webhook_port" type="number"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
                                 </div>
                             </div>
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Admin Email</label>
-                                <input x-model="editProjectData.admin_email" type="email" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Admin
+                                    Email</label>
+                                <input x-model="editProjectData.admin_email" type="email"
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all">
                             </div>
                             <div class="relative">
-                                <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">MongoDB URI Override</label>
-                                <input x-model="editProjectData.mongodb_uri" type="text" placeholder="mongodb://..." class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono">
+                                <label
+                                    class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">MongoDB
+                                    URI Override</label>
+                                <input x-model="editProjectData.mongodb_uri" type="text" placeholder="mongodb://..."
+                                    class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-purple-500/50 transition-all font-mono">
                             </div>
                             <div class="grid grid-cols-2 gap-6">
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Sudo Password</label>
-                                    <input x-model="editProjectData.sudo_pass" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Sudo
+                                        Password</label>
+                                    <input x-model="editProjectData.sudo_pass" type="password" placeholder="••••••••"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-rose-500/50 transition-all">
                                 </div>
                                 <div class="relative">
-                                    <label class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook Secret</label>
-                                    <input x-model="editProjectData.webhook_secret" type="password" placeholder="••••••••" class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
+                                    <label
+                                        class="absolute -top-2 left-4 bg-zinc-950 px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest z-10">Webhook
+                                        Secret</label>
+                                    <input x-model="editProjectData.webhook_secret" type="password"
+                                        placeholder="••••••••"
+                                        class="w-full bg-transparent border border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all">
                                 </div>
                             </div>
                         </div>
                     </section>
 
                     <div class="flex gap-4 pt-6">
-                        <button @click="updateProject()" class="flex-1 bg-amber-500 hover:bg-amber-400 py-5 rounded-[1.5rem] font-black text-black transition-all shadow-xl shadow-amber-900/20">
+                        <button @click="updateProject()"
+                            class="flex-1 bg-amber-500 hover:bg-amber-400 py-5 rounded-[1.5rem] font-black text-black transition-all shadow-xl shadow-amber-900/20">
                             Save Changes
                         </button>
-                        <button @click="showEditModal = false" class="px-10 py-5 bg-zinc-900 rounded-[1.5rem] font-bold hover:bg-zinc-800 transition-colors">Cancel</button>
+                        <button @click="showEditModal = false"
+                            class="px-10 py-5 bg-zinc-900 rounded-[1.5rem] font-bold hover:bg-zinc-800 transition-colors">Cancel</button>
                     </div>
                 </div>
             </div>

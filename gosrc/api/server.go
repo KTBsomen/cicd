@@ -460,10 +460,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 
 		// Trigger a redeploy with the updated config so changes take effect immediately.
 		// This is equivalent to clicking "Deploy" after saving.
-		actions.EnqueueDeployment(appCfg, "", "", func(cfg *parser.Config, h, m string) {
-			actions.SyncRepo(cfg)
-			actions.RunDeployment(cfg)
-		})
+		actions.EnqueueDeployment(appCfg, "", "", actions.FullDeployPipeline)
 
 		return c.JSON(fiber.Map{
 			"message": "Project updated and redeployment triggered",
@@ -586,10 +583,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err != nil {
 			return c.Status(500).SendString(err.Error())
 		}
-		actions.EnqueueDeployment(appCfg, "", "", func(cfg *parser.Config, h, m string) {
-			actions.SyncRepo(cfg)
-			actions.RunDeployment(cfg)
-		})
+		actions.EnqueueDeployment(appCfg, "", "", actions.FullDeployPipeline)
 		return c.SendString("Deployment Started")
 	})
 
@@ -644,10 +638,7 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if err != nil {
 			return c.Status(500).SendString(err.Error())
 		}
-		actions.EnqueueDeployment(appCfg, "", "", func(cfg *parser.Config, h, m string) {
-			actions.SyncRepo(cfg)
-			actions.RunDeployment(cfg)
-		})
+		actions.EnqueueDeployment(appCfg, "", "", actions.FullDeployPipeline)
 		return c.JSON(fiber.Map{"message": "Force reinstall triggered"})
 	})
 

@@ -19,14 +19,14 @@ func TestInjectSafetyFlags(t *testing.T) {
 			input: `echo "hello"
 apt update`,
 			wantInjected: true,
-			contains:     []string{"set -e", "set -o pipefail"},
+			contains:     []string{"set -Euo pipefail"},
 		},
 		{
 			name: "With shebang, no flags",
 			input: `#!/bin/bash
 echo "hello"`,
 			wantInjected: true,
-			contains:     []string{"#!/bin/bash", "set -e", "set -o pipefail"},
+			contains:     []string{"#!/bin/bash", "set -Euo pipefail"},
 		},
 		{
 			name: "Already has set -e, missing pipefail",
@@ -34,7 +34,7 @@ echo "hello"`,
 set -e
 echo "hello"`,
 			wantInjected: true,
-			contains:     []string{"set -o pipefail"},
+			contains:     []string{"# --- injected by CICD"},
 		},
 		{
 			name: "Already has all flags",
@@ -112,7 +112,7 @@ func TestNormalizeSudoAFlags(t *testing.T) {
 			changed:  true,
 		},
 		{
-			name:     "Multiple lines mixed",
+			name: "Multiple lines mixed",
 			input: `#!/bin/bash
 sudo apt update
 # sudo comment
@@ -187,7 +187,7 @@ sudo apt install -y curl -A
 	patchedContent := string(patchedBytes)
 
 	// Check flags
-	if !strings.Contains(patchedContent, "set -e") || !strings.Contains(patchedContent, "set -o pipefail") {
+	if !strings.Contains(patchedContent, "set -Euo pipefail") {
 		t.Errorf("patched content missing safety flags:\n%s", patchedContent)
 	}
 

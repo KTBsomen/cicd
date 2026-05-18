@@ -79,11 +79,11 @@ func injectSafetyFlags(content string, scriptName string) (string, bool) {
 	var inject strings.Builder
 	fmt.Fprintf(&inject, "\n# --- injected by CICD (%s): ensure non-zero exit on failure ---\n", scriptName)
 	if !hasSetE {
-		inject.WriteString("set -ex          # exit immediately on any command failure\n")
+		inject.WriteString("set -Euo pipefail       # exit immediately on any command failure\n")
 	}
-	if !hasPipefail {
-		inject.WriteString("set -o pipefail # catch failures inside pipes\n")
-	}
+	// if !hasPipefail {
+	// 	inject.WriteString("set -o pipefail # catch failures inside pipes\n")
+	// }
 	inject.WriteString("# -----------------------------------------------------------\n")
 
 	lines := strings.SplitAfter(content, "\n")

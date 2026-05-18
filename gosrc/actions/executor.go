@@ -8,6 +8,7 @@ import (
 	"gosrc/database"
 	"gosrc/logger"
 	"gosrc/parser"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
@@ -64,7 +65,7 @@ func SetupProjectFolder(cfg *parser.Config) error {
 	}
 	uid, _ := strconv.Atoi(u.Uid)
 	gid, _ := strconv.Atoi(u.Gid)
-	os.Chown(path, uid, gid)
+	chownRecursive(path, uid, gid)
 
 	testPath := filepath.Join(path, ".cicdlog")
 	testCmd := exec.Command("sudo", "-u", cfg.ServiceUser, "mkdir", "-p", testPath)
@@ -148,7 +149,7 @@ func RunAsUserWithContext(ctx context.Context, cfg *parser.Config, command strin
 	cmd.Stderr = os.Stderr
 	setPlatformAttributes(cmd, uint32(uidInt), uint32(gidInt))
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("command '%s %v' failed: %v", command, args, err)
+		return fmt.Errorf("%s", strings.ReplaceAll(fmt.Sprintf("command '%s %v' failed: %v", command, args, err), cfg.GitPassword, "****"))
 	}
 	return nil
 }
@@ -200,9 +201,15 @@ func SyncRepo(cfg *parser.Config) error {
 		return err
 	}
 
+	u, _ := user.Lookup(cfg.ServiceUser)
+	if u != nil {
+		uid, _ := strconv.Atoi(u.Uid)
+		gid, _ := strconv.Atoi(u.Gid)
+		chownRecursive(cfg.ServiceDir, uid, gid)
+	}
+
 	if _, err := os.Stat(codebasePath); os.IsNotExist(err) {
 		os.MkdirAll(codebasePath, 0755)
-		u, _ := user.Lookup(cfg.ServiceUser)
 		if u != nil {
 			uid, _ := strconv.Atoi(u.Uid)
 			gid, _ := strconv.Atoi(u.Gid)
@@ -217,7 +224,7 @@ func SyncRepo(cfg *parser.Config) error {
 	repoURL := cfg.RepoURL
 	if cfg.GitUsername != "" && cfg.GitPassword != "" {
 		if after, ok := strings.CutPrefix(repoURL, "https://"); ok {
-			repoURL = "https://" + cfg.GitUsername + ":" + cfg.GitPassword + "@" + after
+			repoURL = "https://" + cfg.GitUsername + ":" + url.QueryEscape(cfg.GitPassword) + "@" + after
 		}
 	}
 
@@ -275,16 +282,22 @@ func RunDeployment(cfg *parser.Config) error {
 		hashFile := filepath.Join(logDir, "install.hash")
 		lastHash, _ := os.ReadFile(hashFile)
 
-		if string(lastHash) == currentHash {
+		if string(lastHash) == currentHash && !cfg.SkipInstallHash {
 			logger.Info("⏩ install.sh hasn't changed. Skipping build step.", cfg)
 		} else {
 			// F11: Write INSTALL separator
 			writeSeparator(logFile, "📦 INSTALL PHASE", cfg.ServiceName)
-
+			if err := GrantSudoPrivileges(cfg.ServiceUser); err != nil {
+				logger.Error(fmt.Sprintf("⚠️ JIT Sudo failed: %v", err), cfg)
+			} else {
+				defer RemoveSudoPrivileges(cfg.ServiceUser)
+				logger.Info("🔑 Using ASKPASS + JIT NOPASSWD sudo for install.sh", cfg)
+			}
 			// Determine sudo authentication strategy BEFORE building env so that
 			// SUDO_ASKPASS is set correctly in the child process environment.
 			askPassValue := "" // will be set below for both strategies
 			if cfg.SudoPass != "" {
+
 				// Strategy A: real password via askpass.sh helper.
 				// install.sh must use `sudo -A` to pick up SUDO_ASKPASS.
 				askPassPath := filepath.Join(logDir, "askpass.sh")
@@ -312,12 +325,7 @@ func RunDeployment(cfg *parser.Config) error {
 					defer os.Remove(dummyPath)
 					askPassValue = dummyPath
 				}
-				if err := GrantSudoPrivileges(cfg.ServiceUser); err != nil {
-					logger.Error(fmt.Sprintf("⚠️ JIT Sudo failed: %v", err), cfg)
-				} else {
-					defer RemoveSudoPrivileges(cfg.ServiceUser)
-					logger.Info("🔑 Using JIT NOPASSWD sudo for install.sh", cfg)
-				}
+
 			}
 
 			// Build env AFTER askpass is ready so SUDO_ASKPASS has the correct value.
@@ -325,7 +333,7 @@ func RunDeployment(cfg *parser.Config) error {
 				"DEBIAN_FRONTEND=noninteractive",
 				"UCF_FORCE_CONFNEW=1",
 				"PYTHONUNBUFFERED=1",
-				"PORT="+fmt.Sprintf("%d", cfg.Webhook),
+				"CICD_PORT="+fmt.Sprintf("%d", cfg.Webhook),
 				"CICD_LOG_DIR="+logDir,
 				"CICD_PID_FILE="+filepath.Join(logDir, "app.pid"),
 				"CICD_SERVICE_NAME="+cfg.ServiceName,
@@ -450,7 +458,10 @@ func RollbackToCommit(cfg *parser.Config, commitHash string) error {
 
 	cfg.ServiceDir = oldDir
 
-	// 3. Run deployment (force install by clearing hash if needed)
+	// Rollbacks must always execute install.sh to ensure environment consistency (EC-11 / EC-14)
+	cfg.SkipInstallHash = true
+
+	// 3. Run deployment
 	if err := RunDeployment(cfg); err != nil {
 		logger.Error("Rollback deployment failed: "+err.Error(), cfg)
 		database.SetDeployStatusByDir(cfg.ServiceDir, "failed")
@@ -489,12 +500,37 @@ func PostDeployHealthCheck(cfg *parser.Config, hash, trigger string, depth int) 
 	time.Sleep(15 * time.Second)
 
 	projectID, _ := database.GetProjectIDByDir(cfg.ServiceDir)
-	alive, _, _, restarts := GetProcessStatus(cfg.ServiceDir)
 
-	// Stability check: If it's alive but has restarted, it's not a successful deploy
-	if alive && restarts > 0 {
-		logger.Warn(fmt.Sprintf("⚠️  Service '%s' is alive but has restarted %d times during health check. Marking as UNSTABLE.", cfg.ServiceName, restarts), cfg)
-		alive = false // Trigger rollback logic below
+	alive := false
+	restarts := 0
+
+	// Check for custom health check script
+	healthScript := filepath.Join(cfg.ServiceDir, "codebase", ".cicd", "health.sh")
+	if _, err := os.Stat(healthScript); err == nil {
+		logger.Info("🩺 Found custom health check script at .cicd/health.sh. Executing...", cfg)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		os.Chmod(healthScript, 0755)
+
+		err := RunAsUserWithContext(ctx, cfg, "bash", healthScript)
+		if err == nil {
+			alive = true
+			logger.Info("✅ Custom health check script passed successfully!", cfg)
+		} else {
+			logger.Error(fmt.Sprintf("❌ Custom health check script failed: %v", err), cfg)
+		}
+	} else {
+		// Fallback to default process tier checks
+		var aliveStatus bool
+		aliveStatus, _, _, restarts = GetProcessStatus(cfg.ServiceDir)
+		alive = aliveStatus
+
+		// Stability check: If it's alive but has restarted, it's not a successful deploy
+		if alive && restarts > 0 {
+			logger.Warn(fmt.Sprintf("⚠️  Service '%s' is alive but has restarted %d times during health check. Marking as UNSTABLE.", cfg.ServiceName, restarts), cfg)
+			alive = false // Trigger rollback logic below
+		}
 	}
 
 	if alive {
@@ -633,4 +669,14 @@ func FullDeployPipeline(cfg *parser.Config, commitHash, commitMsg string) {
 	database.UpdateLastCommitInfo(cfg.ServiceDir, commitHash, commitMsg)
 
 	go PostDeployHealthCheck(cfg, commitHash, trigger, 0)
+}
+
+// chownRecursive recursively changes file and directory ownership
+func chownRecursive(path string, uid, gid int) {
+	_ = filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
+		if err == nil {
+			_ = os.Chown(name, uid, gid)
+		}
+		return nil
+	})
 }

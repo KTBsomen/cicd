@@ -1,11 +1,14 @@
 package actions
 
 import (
+	"context"
 	"fmt"
+	"gosrc/database"
 	"gosrc/logger"
 	"gosrc/parser"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -92,7 +95,7 @@ func StartAppProcess(cfg *parser.Config) error {
 			}
 			registry.Store(cfg.ServiceDir, proc)
 			// Write PID back (it was deleted above, but process is alive)
-			writePIDFile(pidPath, existingPID)
+			writePIDFile(pidPath, existingPID, cfg.ServiceUser)
 			go watchSinglePID(proc)
 			return nil
 		}
@@ -122,16 +125,28 @@ func StartAppProcess(cfg *parser.Config) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
-	// 3. Environment setup — inject CICD env vars for all tiers
+	// Lookup service user to drop privileges and set proper HOME/USER context (EC-7/EC-9)
+	u, err := user.Lookup(cfg.ServiceUser)
+	if err != nil {
+		logFile.Close()
+		return fmt.Errorf("failed to lookup service user %s: %v", cfg.ServiceUser, err)
+	}
+	uidInt, _ := strconv.Atoi(u.Uid)
+	gidInt, _ := strconv.Atoi(u.Gid)
+
+	// 3. Environment setup — inject CICD env vars for all tiers and service user context
 	cmd.Env = append(os.Environ(),
-		"PORT="+fmt.Sprintf("%d", cfg.Webhook),
+		"HOME="+u.HomeDir,
+		"USER="+u.Username,
+		"CICD_PORT="+fmt.Sprintf("%d", cfg.Webhook),
 		"CICD_LOG_DIR="+filepath.Join(cfg.ServiceDir, ".cicdlog"),
 		"CICD_PID_FILE="+pidPath,
 		"CICD_SERVICE_NAME="+cfg.ServiceName,
 		"CICD_SERVICE_DIR="+cfg.ServiceDir,
 	)
 
-	// 4. Platform-specific Process Group Isolation
+	// 4. Platform-specific Process Group Isolation & Privilege Drop
+	setPlatformAttributes(cmd, uint32(uidInt), uint32(gidInt))
 	prepareProcessGroup(cmd)
 
 	// 5. Launch as a background process
@@ -150,7 +165,7 @@ func StartAppProcess(cfg *parser.Config) error {
 	registry.Store(cfg.ServiceDir, proc)
 
 	// Write the bash process PID (tier 1 and 2 both start as bash)
-	writePIDFile(pidPath, cmd.Process.Pid)
+	writePIDFile(pidPath, cmd.Process.Pid, cfg.ServiceUser)
 
 	go monitorProcess(proc, logFile)
 
@@ -254,7 +269,7 @@ func monitorProcess(p *ManagedProcess, logFile *os.File) {
 			p.Mode = RunModeBackground
 			p.ProcessGroup = pgid
 			// Write the first child PID for CLI status
-			writePIDFile(pidPath, children[0])
+			writePIDFile(pidPath, children[0], p.Config.ServiceUser)
 			registry.Store(p.Config.ServiceDir, p)
 			go watchProcessGroup(p)
 			logger.Info(fmt.Sprintf("🔍 Background mode: auto-detected %d child(ren) in process group %d", len(children), pgid), p.Config)
@@ -262,8 +277,25 @@ func monitorProcess(p *ManagedProcess, logFile *os.File) {
 		}
 	}
 
+	// TIER 4 fallback: check if custom health check script exists to monitor it independently in a loop (F7 / Tier 4 upgrade)
+	healthScript := filepath.Join(p.Config.ServiceDir, "codebase", ".cicd", "health.sh")
+	if _, err := os.Stat(healthScript); err == nil {
+		p.Mode = RunModeDelegating // Treat as delegating/monitored
+		p.ExtPID = 0               // No static PID
+		registry.Store(p.Config.ServiceDir, p)
+		go watchHealthScript(p, healthScript)
+		logger.Info("🩺 Custom health script (.cicd/health.sh) detected. Spawning background loop watchdog.", p.Config)
+		return
+	}
+
 	// TIER 4 fallback: fully external, nothing to track
-	logger.Info("✅ run.sh exited 0 with no traceable children. Externally managed.", p.Config)
+	logger.Warn("⚠️  WARNING: run.sh exited with no traceable children and no PID file written.", p.Config)
+	logger.Warn("👉 If your application runs as a detached background daemon, the orchestrator cannot monitor its status!", p.Config)
+	logger.Warn("👉 To enable robust PID monitoring, please write your application's PID to $CICD_PID_FILE inside your run.sh.", p.Config)
+	logger.Warn("   [Standard Background Example]:\n     node index.js &\n     echo $! > \"$CICD_PID_FILE\"", p.Config)
+	logger.Warn("   [PM2 Process Manager Example]:\n     pm2 start index.js --name \"my-app\"\n     pm2 pid my-app > \"$CICD_PID_FILE\"", p.Config)
+	logger.Warn("   [Tmux Session Example]:\n     tmux new-session -d -s my-app \"node index.js\"\n     tmux list-panes -t my-app -F '#{pane_pid}' > \"$CICD_PID_FILE\"", p.Config)
+	logger.Info("✅ run.sh exited 0 with no traceable children. Externally managed (monitoring disabled).", p.Config)
 	os.Remove(pidPath) // Clean up — no process to track
 	registry.Delete(p.Config.ServiceDir)
 }
@@ -286,6 +318,41 @@ func watchSinglePID(p *ManagedProcess) {
 		if !isProcessAlive(p.ExtPID) {
 			logger.Error(fmt.Sprintf("💀 External process PID %d died. Triggering restart...", p.ExtPID), p.Config)
 			registry.Delete(p.Config.ServiceDir)
+			restartWithBackoff(p)
+			return
+		}
+	}
+}
+
+// watchHealthScript runs .cicd/health.sh in a background loop for independent monitoring (Tier 4)
+func watchHealthScript(p *ManagedProcess, healthScript string) {
+	for {
+		time.Sleep(30 * time.Second)
+
+		// Check if we were stopped intentionally
+		if _, ok := registry.Load(p.Config.ServiceDir); !ok {
+			return
+		}
+
+		// Reset restart count if stable
+		if time.Since(p.StartTime) > stableRunDuration && p.RestartCount > 0 {
+			p.RestartCount = 0
+		}
+
+		// Execute health script with 10-second timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		os.Chmod(healthScript, 0755)
+		err := RunAsUserWithContext(ctx, p.Config, "bash", healthScript)
+		cancel()
+
+		if err != nil {
+			logger.Error(fmt.Sprintf("❌ Custom health check script failed: %v. Triggering restart...", err), p.Config)
+			registry.Delete(p.Config.ServiceDir)
+
+			// Mark status as failed in SQLite
+			database.SetDeployStatusByDir(p.Config.ServiceDir, "failed")
+
+			// Trigger restart pipeline
 			restartWithBackoff(p)
 			return
 		}
@@ -368,6 +435,16 @@ func GetProcessStatus(id string) (bool, int, string, int) {
 			}
 		}
 	}
+
+	// Fallback: If not tracked in active process memory, check database deployment status.
+	// This ensures that Tier 4 / externally managed processes (e.g. launched via custom health checks or fully detached)
+	// correctly show as Online / running on the dashboard!
+	if status, err := database.GetDeployStatusByDir(id); err == nil {
+		if status == "running" || status == "externally_managed" {
+			return true, 0, "Externally Managed", 0
+		}
+	}
+
 	return false, 0, "Not Running", 0
 }
 
@@ -397,8 +474,13 @@ func GetRunMode(serviceDir string) RunMode {
 //  Helpers
 // ═══════════════════════════════════════════════════════
 
-func writePIDFile(path string, pid int) {
-	os.WriteFile(path, []byte(strconv.Itoa(pid)), 0644)
+func writePIDFile(path string, pid int, serviceUser string) {
+	_ = os.WriteFile(path, []byte(strconv.Itoa(pid)), 0644)
+	if u, err := user.Lookup(serviceUser); err == nil {
+		uid, _ := strconv.Atoi(u.Uid)
+		gid, _ := strconv.Atoi(u.Gid)
+		_ = os.Chown(path, uid, gid)
+	}
 }
 
 func readPIDFile(path string) int {

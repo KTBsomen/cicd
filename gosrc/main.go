@@ -84,6 +84,7 @@ func main() {
 			panic(err)
 		}
 		logger.Info("🚀 Service started and enabled on boot!", &config)
+		cli.PrintGatewayInfo(&config)
 		os.Exit(0)
 	}
 
@@ -93,7 +94,7 @@ func main() {
 
 	// B1: On first boot with no admin email, generate and print setup token
 	if config.AdminEmail == "" {
-		token, err := database.GenerateSetupToken()
+		token, err := database.GetOrGenerateSetupToken()
 		if err != nil {
 			logger.Error("Failed to generate setup token: "+err.Error(), &config)
 		} else {

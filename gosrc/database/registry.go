@@ -248,6 +248,29 @@ func LoadGlobalSettings(cfg *parser.Config) {
 	}
 }
 
+// GetOrGenerateSetupToken checks if there is a valid, non-expired setup token in the database.
+// If active, it returns it; otherwise, it generates and stores a new one.
+func GetOrGenerateSetupToken() (string, error) {
+	var token string
+	var expiresStr sql.NullString
+	err := DB.QueryRow(`SELECT setup_token, setup_token_expires FROM settings WHERE id = 1`).Scan(&token, &expiresStr)
+	if err == nil && token != "" {
+		if expiresStr.Valid {
+			var expires time.Time
+			for _, layout := range []string{time.RFC3339, "2006-01-02 15:04:05-07:00", "2006-01-02T15:04:05Z", "2006-01-02 15:04:05"} {
+				if t, err := time.Parse(layout, expiresStr.String); err == nil {
+					expires = t
+					break
+				}
+			}
+			if !expires.IsZero() && time.Now().Before(expires) {
+				return token, nil // Still active, return it
+			}
+		}
+	}
+	return GenerateSetupToken()
+}
+
 // GenerateSetupToken creates a 32-char hex random token, stores it in SQLite with a 15-minute expiry.
 // Returns the token string. Called on boot when AdminEmail is empty.
 func GenerateSetupToken() (string, error) {
@@ -626,6 +649,13 @@ func SetDeployStatus(id string, status string) error {
 func SetDeployStatusByDir(serviceDir string, status string) error {
 	_, err := DB.Exec("UPDATE users SET deploy_status = ? WHERE serviceDir = ?", status, serviceDir)
 	return err
+}
+
+// GetDeployStatusByDir fetches deploy status using serviceDir as the key
+func GetDeployStatusByDir(serviceDir string) (string, error) {
+	var status string
+	err := DB.QueryRow("SELECT COALESCE(deploy_status, 'idle') FROM users WHERE serviceDir = ?", serviceDir).Scan(&status)
+	return status, err
 }
 
 // ═══════════════════════════════════════════════════════

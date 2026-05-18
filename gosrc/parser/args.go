@@ -56,7 +56,8 @@ type Config struct {
 	NotifyURL string
 
 	// Deployment
-	DeployTimeout int // seconds, default 1800 (30 min)
+	DeployTimeout   int  // seconds, default 1800 (30 min)
+	SkipInstallHash bool // skip checking install.hash and force execution
 }
 
 // ExplicitFlags tracks which flags were explicitly provided on the command line.
