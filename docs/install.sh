@@ -1,55 +1,86 @@
 #!/bin/sh
 # ═══════════════════════════════════════════
-# CICD — Universal Shell Installer
+# CICD — Production Installer
+# Reliable GitHub Release Installer
 # ═══════════════════════════════════════════
 set -e
 
-# Symmetrical ASCII header
-echo "   🌸 CICD — Universal Setup"
-echo "   ───────────────────────────────────"
+echo "🌸 CICD — Installing..."
 
-# 1. Detect OS
-OS_NAME=$(uname -s | tr '[:upper:]' '[:lower:]')
-case "$OS_NAME" in
-  linux*)   OS="linux" ;;
+REPO="KTBsomen/cicd"
+BASE_URL="https://github.com/$REPO/releases/latest/download"
+
+# -------------------------
+# Detect OS
+# -------------------------
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+
+case "$OS" in
+  linux*) OS="linux" ;;
   *)
-    echo "❌ Unsupported operating system: $OS_NAME (This daemon requires Linux / systemd support)"
+    echo "❌ Unsupported OS: $OS"
     exit 1
     ;;
 esac
 
-# 2. Detect Architecture
-ARCH_NAME=$(uname -m)
-case "$ARCH_NAME" in
-  x86_64|amd64)        ARCH="amd64" ;;
-  aarch64|arm64)       ARCH="arm64" ;;
-  armv7*|armhf|arm)    ARCH="arm" ;;
-  i386|i686|386)       ARCH="386" ;;
+# -------------------------
+# Detect ARCH
+# -------------------------
+ARCH=$(uname -m)
+
+case "$ARCH" in
+  x86_64|amd64) ARCH="amd64" ;;
+  aarch64|arm64) ARCH="arm64" ;;
+  armv7*|armhf|arm) ARCH="arm" ;;
+  i386|i686|386) ARCH="386" ;;
   *)
-    echo "❌ Unsupported CPU architecture: $ARCH_NAME"
+    echo "❌ Unsupported architecture: $ARCH"
     exit 1
     ;;
 esac
 
-BINARY_NAME="cicd-${OS}-${ARCH}"
-DOWNLOAD_URL="https://github.com/KTBsomen/cicd/releases/latest/download/${BINARY_NAME}"
+BINARY="cicd-${OS}-${ARCH}"
+URL="${BASE_URL}/${BINARY}"
 
-echo "💻 Detected Platform: ${OS} (${ARCH})"
-echo "📥 Downloading binary from: ${DOWNLOAD_URL}"
+echo "💻 Platform: ${OS}/${ARCH}"
+echo "📦 Downloading: ${BINARY}"
 
-# 3. Download using curl or wget
-if command -v curl >/dev/null 2>&1; then
-  curl -L -s "$DOWNLOAD_URL" -o cicd
-elif command -v wget >/dev/null 2>&1; then
-  wget -q "$DOWNLOAD_URL" -O cicd
-else
-  echo "❌ Error: Please install 'curl' or 'wget' to download the binary."
+TMP="cicd.tmp"
+MAX_RETRY=3
+i=1
+
+# -------------------------
+# Download with retry
+# -------------------------
+while [ $i -le $MAX_RETRY ]; do
+  echo "🔁 Attempt $i/$MAX_RETRY"
+
+  if curl -L --fail --progress-bar -o "$TMP" "$URL"; then
+    echo "✅ Download successful"
+    break
+  fi
+
+  echo "⚠️ Failed, retrying..."
+  i=$((i + 1))
+  sleep 1
+done
+
+# -------------------------
+# Final check
+# -------------------------
+if [ ! -s "$TMP" ]; then
+  echo "❌ Installation failed (download error)"
   exit 1
 fi
 
-# 4. Make executable
+# -------------------------
+# Install binary
+# -------------------------
+mv "$TMP" cicd
 chmod +x cicd
-echo "🚀 Success! The executable binary 'cicd' is ready."
-echo "CICD installed at $(pwd)/cicd"
-echo "👉 Start the core daemon: sudo ./cicd"
-echo "   ───────────────────────────────────"
+
+echo ""
+echo "🚀 CICD installed successfully!"
+echo "📍 Path: $(pwd)/cicd"
+echo "👉 Run: sudo ./cicd"
+echo ""
