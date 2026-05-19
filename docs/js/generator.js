@@ -46,7 +46,7 @@
     const smtpPass = document.getElementById('val_smtp_auth_pass_token').value.trim();
 
     let step1 = `# Step 1: Download CICD binary (Universal Installer)
-curl -fsSL https://cicd.rf.gd/install.sh | sh`;
+curl -fsSL https://github.com/KTBsomen/cicd/releases/latest/download/install.sh | sh`;
 
     let step2Header = "";
     let cmd = `sudo ./cicd`;

@@ -164,7 +164,7 @@ pm2 pid "$CICD_SERVICE_NAME" > "$CICD_PID_FILE"</code></pre>
         <div class="faq-a">
           <div class="faq-a-inner">
             To update the orchestrator daemon to the latest release, run the universal script:
-            <pre style="margin-top:0.5rem; margin-bottom:0.5rem;"><code>curl -fsSL https://cicd.rf.gd/install.sh | sh
+            <pre style="margin-top:0.5rem; margin-bottom:0.5rem;"><code>curl -fsSL https://github.com/KTBsomen/cicd/releases/latest/download/install.sh | sh
 cicd restart</code></pre>
             The background systemd service will reload and apply the update without interrupting your running applications.
           </div>

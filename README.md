@@ -117,7 +117,7 @@ The orchestrator includes a unified visual interface streaming real-time statist
 Run the universal installation script on your server:
 
 ```bash
-curl -fsSL https://cicd.rf.gd/install.sh | sh
+curl -fsSL https://github.com/KTBsomen/cicd/releases/latest/download/install.sh | sh
 ```
 
 ### 2. Start the Daemon
