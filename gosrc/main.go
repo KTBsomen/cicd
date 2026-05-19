@@ -18,9 +18,23 @@ import (
 	"syscall"
 )
 
+var (
+	Version   = "dev"
+	Commit    = "none"
+	BuildTime = "unknown"
+)
+
 func main() {
 	// Initialize the multi-channel logger
 	logger.InitLogger()
+
+	// Check for version command immediately
+	if len(os.Args) >= 2 && (strings.ToLower(os.Args[1]) == "version" || os.Args[1] == "-v" || os.Args[1] == "--version") {
+		fmt.Printf("Version:    %s\n", Version)
+		fmt.Printf("Commit:     %s\n", Commit)
+		fmt.Printf("Build Time: %s\n", BuildTime)
+		os.Exit(0)
+	}
 
 	// Ensure system dependencies (like git) are present
 	if err := actions.EnsureDependencies(); err != nil {

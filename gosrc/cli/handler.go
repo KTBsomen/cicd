@@ -557,6 +557,7 @@ func handleHelp() {
 		{text.FgHiYellow.Sprint("reinstall"), "cicd reinstall <service>", "Force full clean reinstall of a service dependency tree"},
 		{text.FgHiYellow.Sprint("doctor"), "cicd doctor", "Run diagnostic health checks on ports, SQLite, and SMTP"},
 		{text.FgHiYellow.Sprint("uninstall"), "cicd uninstall", "Stop, disable, and clean up the orchestrator daemon"},
+		{text.FgHiYellow.Sprint("version"), "cicd version", "Print orchestrator release version, commit, and build time"},
 		{text.FgHiYellow.Sprint("--help"), "cicd --help", "Show other project specific help command list"},
 	})
 
