@@ -13,7 +13,8 @@
     .docs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
     .doc-card { padding: 2rem; text-decoration: none; display: block; }
     .doc-card:hover { border-color: var(--sakura); }
-    .doc-card .doc-num { font-size: 3rem; font-weight: 900; color: var(--sakura); opacity: 0.3; line-height: 1; }
+    .doc-card .doc-num { font-size: 3rem; font-weight: 900; color: var(--sakura); opacity: 0.3; line-height: 1; display: flex; align-items: center; justify-content: flex-start; height: 3rem; }
+    .doc-card .doc-num svg { width: 3rem; height: 3rem; }
     .doc-card h3 { margin: 0.75rem 0 0.5rem; font-size: 1.3rem; }
     .doc-card p { font-size: 0.9rem; color: var(--text-secondary); }
     .doc-card .doc-link { color: var(--cyan); font-size: 0.85rem; font-weight: 600; margin-top: 1rem; display: inline-block; }
@@ -23,7 +24,9 @@
   <!-- ═══ NAVIGATION ═══ -->
   <nav class="nav scrolled">
     <div class="nav-inner">
-      <a href="index.html" class="nav-logo"><span class="sakura-icon">🌸</span> CICD</a>
+      <a href="index.html" class="nav-logo">
+        <i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.4rem;"></i> CICD
+      </a>
       <div class="nav-links">
         <a href="index.html">Home</a>
         <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a>
@@ -34,7 +37,7 @@
   <section class="docs-hub">
     <div class="container">
       <div class="docs-hero">
-        <span class="badge badge-sakura">Documentation</span>
+        <span class="badge badge-sakura"><i data-lucide="file-text" class="icon-sakura" style="margin-right: 0.4rem;"></i> Documentation</span>
         <h1 style="margin-top:1rem;">Learn CICD</h1>
         <p class="mx-auto text-center" style="margin-top:0.5rem;">
           Everything you need to deploy, monitor, and manage your applications with CICD.
@@ -78,7 +81,7 @@
         </a>
 
         <a href="index.html#generator" class="glass doc-card">
-          <div class="doc-num">⚡</div>
+          <div class="doc-num"><i data-lucide="zap" class="icon-sakura"></i></div>
           <h3>Command Generator</h3>
           <p>Interactive form that generates your exact setup command. Fill in your repo URL, email, and options — get a copy-paste-ready command for your server.</p>
           <span class="doc-link">Open Generator →</span>
@@ -89,10 +92,17 @@
 
   <footer class="footer">
     <div class="container">
-      <p><span style="color:var(--sakura);">🌸</span> CICD — <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a> | MIT License</p>
+      <p><i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.4rem;"></i> CICD — <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a> | MIT License</p>
     </div>
   </footer>
 
   <script src="js/scroll.js"></script>
+  <!-- Lucide SaaS Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+    });
+  </script>
 </body>
 </html>

@@ -84,4 +84,14 @@
     });
   };
   document.head.appendChild(hljsScript);
+
+  // ─── Dynamic Lucide Icons ───
+  const lucideScript = document.createElement('script');
+  lucideScript.src = 'https://unpkg.com/lucide@latest';
+  lucideScript.onload = () => {
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  };
+  document.head.appendChild(lucideScript);
 })();

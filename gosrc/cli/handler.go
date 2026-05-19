@@ -488,7 +488,7 @@ func PrintGatewayInfo(cfg *parser.Config) {
 
 	t1 := table.NewWriter()
 	t1.SetOutputMirror(os.Stdout)
-	t1.AppendRow(table.Row{text.Bold.Sprint("🌐 Dashboard URL"), text.FgHiCyan.Sprintf("http://%s:%d/dashboard", cfg.PublicIP, cfg.Webhook)})
+	t1.AppendRow(table.Row{text.Bold.Sprint("🌐 Dashboard URL"), text.Hyperlink(fmt.Sprintf("http://%s:%d/dashboard", cfg.PublicIP, cfg.Webhook), text.FgHiCyan.Sprintf("http://%s:%d/dashboard", cfg.PublicIP, cfg.Webhook))})
 	if cfg.AdminEmail == "" {
 		t1.AppendRow(table.Row{text.Bold.Sprint("🔑 Setup Token "), text.FgHiYellow.Sprint(token)})
 	} else {
@@ -507,7 +507,7 @@ func PrintGatewayInfo(cfg *parser.Config) {
 
 	t2 := table.NewWriter()
 	t2.SetOutputMirror(os.Stdout)
-	t2.AppendRow(table.Row{text.Bold.Sprint("🔌 Payload URL  "), text.FgHiCyan.Sprintf("http://%s:%d/", cfg.PublicIP, cfg.Webhook)})
+	t2.AppendRow(table.Row{text.Bold.Sprint("🔌 Payload URL  "), text.Hyperlink(fmt.Sprintf("http://%s:%d/", cfg.PublicIP, cfg.Webhook), text.FgHiCyan.Sprintf("http://%s:%d/", cfg.PublicIP, cfg.Webhook))})
 	t2.AppendRow(table.Row{text.Bold.Sprint("⚙️  Content Type "), text.Bold.Sprint("application/json")})
 	t2.AppendRow(table.Row{text.Bold.Sprint("🔒 Secret Key   "), text.FgHiYellow.Sprint(cfg.WebhookSecret)})
 	style2 := table.StyleRounded
@@ -520,6 +520,8 @@ func PrintGatewayInfo(cfg *parser.Config) {
 	fmt.Println("======================================================================")
 	fmt.Println("  Watch the latest YouTube guide on configuring GitHub webhooks:")
 	fmt.Println("  " + text.Bold.Sprint("https://www.youtube.com/watch?v=MyEkKp3VRwo") + text.Faint.Sprint(" (GitHub Webhooks Tutorial by Behind Tools)"))
+	fmt.Println("  Read all documentation: " + text.Hyperlink("https://cicd.rf.gd", text.FgHiCyan.Sprint("https://cicd.rf.gd")))
+	fmt.Println("  GitHub Repository: " + text.Hyperlink("https://github.com/KTBsomen/cicd", text.FgHiCyan.Sprint("https://github.com/KTBsomen/cicd")))
 	fmt.Println("======================================================================")
 
 	fmt.Println(text.Faint.Sprint("⚙️  SYSTEMD SERVICE MANAGEMENT:"))
@@ -528,7 +530,7 @@ func PrintGatewayInfo(cfg *parser.Config) {
 
 	fmt.Println("  - To check systemd service status:  " + text.Bold.Sprint("cicd status"))
 	fmt.Println("  - To view list of active services:  " + text.Bold.Sprint("cicd ls\n"))
-	fmt.Println("  - TO View all commands:             " + text.Bold.Sprintf("cicd commands"))
+	fmt.Println("  - To view all commands:             " + text.Bold.Sprintf("cicd commands"))
 }
 
 // handleHelp displays a high-fidelity table of all registered CLI commands

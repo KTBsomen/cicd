@@ -11,9 +11,9 @@
   <!-- ═══ NAVIGATION ═══ -->
   <nav class="nav scrolled">
     <div class="nav-inner">
-      <a href="index.html" class="nav-logo"><span class="sakura-icon">🌸</span> CICD</a>
+      <a href="index.html" class="nav-logo"><i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.4rem;"></i> CICD</a>
       <div style="display: flex; gap: 1.5rem; align-items: center;">
-        <button id="sidebar-toggle" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;display:none;" class="show-mobile">☰</button>
+        <button id="sidebar-toggle" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;display:none;" class="show-mobile"><i data-lucide="menu"></i></button>
         <div class="nav-links hide-mobile">
           <a href="index.html">Home</a>
           <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a>
@@ -28,6 +28,8 @@
       <div class="sidebar-section">
         <div class="sidebar-title">Getting Started</div>
         <a href="quickstart.html" class="sidebar-link active">Quick Start</a>
+        <a href="#github-pat" class="sidebar-link">GitHub PAT Setup</a>
+        <a href="#webhook-setup" class="sidebar-link">Proper Webhooks</a>
         <a href="cicd-folder.html" class="sidebar-link">The .cicd Folder</a>
       </div>
       <div class="sidebar-section">
@@ -51,11 +53,11 @@
       <p>Deploy and monitor multiple applications on your VPS. CICD is a single, zero-dependency binary that manages your entire server fleet.</p>
 
       <!-- ─── Zero Config Mode ─── -->
-      <h2 id="zero-config">Zero-Flag Core Execution</h2>
+      <h2 id="zero-config" data-section="zero-config">Zero-Flag Core Execution</h2>
       <p>To run CICD, <strong>no flags are required at all</strong>. Running the binary directly sets up the internal database, auto-detects your VPS public IP, starts the webhook server on port <code>9641</code>, and activates the web dashboard.</p>
       <pre><code>sudo ./cicd</code></pre>
       <div class="callout callout-info">
-        <div class="callout-title">ℹ️ Core Automatic Setup</div>
+        <div class="callout-title"><i data-lucide="info" class="icon-sakura" style="margin-right: 0.4rem;"></i> Core Automatic Setup</div>
         <p>On startup with no arguments, CICD:
           <br>1. Auto-detects your server public IP using <code>api.ipify.org</code>.
           <br>2. Initializes the SQLite database at the hardcoded path <code>/etc/cicd/data/cicd.db</code>.
@@ -65,7 +67,7 @@
       </div>
 
       <!-- ─── Prerequisites ─── -->
-      <h2 id="prerequisites">Prerequisites</h2>
+      <h2 id="prerequisites" data-section="prerequisites">Prerequisites</h2>
       <ul>
         <li><strong>OS:</strong> Any Linux environment (Ubuntu 20+, Debian 11+, CentOS, RHEL, or WSL).</li>
         <li><strong>Access:</strong> Root or sudo privileges (required for sandboxing and port binding).</li>
@@ -73,6 +75,35 @@
         <li><strong>Git:</strong> Installed on the server (CICD auto-installs it if missing).</li>
         <li><strong>Codebase:</strong> Your repository must contain a <code>.cicd/</code> folder with at least a <code>run.sh</code> file.</li>
       </ul>
+
+      <!-- ─── GitHub Authentication (PAT) ─── -->
+      <h2 id="github-pat" data-section="github-pat">GitHub Authentication (Personal Access Token)</h2>
+      <p>If your repository is private, the background agent needs a Personal Access Token (PAT) to securely pull and sync code to your server. We highly recommend using fine-grained tokens for minimum scope footprint.</p>
+      
+      <div class="callout callout-info" style="margin-top: 1rem;">
+        <div class="callout-title"><i data-lucide="key" class="icon-sakura" style="margin-right: 0.4rem;"></i> 3-Step Fine-Grained Token Setup</div>
+        <p>
+          1. Navigate directly to the <a href="https://github.com/settings/personal-access-tokens" target="_blank" style="color: var(--cyan); text-decoration: underline; font-weight: 600;">GitHub Fine-Grained Personal Access Tokens Creator</a>.
+          <br>2. Set the <strong>Repository access</strong> to either <em>All repositories</em> or <em>Only select repositories</em> (choosing your specific project repo).
+          <br>3. Under <strong>Repository permissions</strong>, expand the <strong>Contents</strong> resource category and set its permission level to <strong>Read-only</strong> (or Read &amp; Write if your application writes tags/logs back to the git branch directly).
+        </p>
+      </div>
+
+      <!-- ─── GitHub Webhook Setup ─── -->
+      <h2 id="webhook-setup" data-section="webhook-setup">How to Properly Setup Webhooks</h2>
+      <p>To enable instant deployments on git push, you must register a secure webhook inside GitHub. This triggers a cryptographic signature-validated dispatch to your background daemon.</p>
+      
+      <div class="callout callout-tip" style="margin-top: 1rem;">
+        <div class="callout-title"><i data-lucide="bell" class="icon-sakura" style="margin-right: 0.4rem;"></i> Secure Webhook Setup Steps</div>
+        <p>
+          1. Go to your GitHub repository page, click <strong>Settings</strong>, and choose <strong>Webhooks</strong> in the left-hand sidebar.
+          <br>2. Click the <strong>Add webhook</strong> button in the top-right corner.
+          <br>3. Enter your <strong>Payload URL</strong>: <code>http://YOUR-SERVER-PUBLIC-IP:9641/</code> (Ensure the trailing slash <code>/</code> is present).
+          <br>4. Change <strong>Content type</strong> to <strong>application/json</strong> (important — standard forms will not be parsed properly by the API).
+          <br>5. Paste your <strong>Secret</strong> key: This is your HMAC signature validation secret (auto-generated by our command builder or defined via <code>--webhook-secret</code>).
+          <br>6. Select <strong>Just the push event</strong>, leave the webhook active, and click <strong>Add webhook</strong>.
+        </p>
+      </div>
 
       <!-- ─── Installation ─── -->
       <h2 id="install">Installation & Deployment</h2>
@@ -193,7 +224,7 @@ wget -qO- https://cicd.rf.gd/install.sh | sh</code></pre>
     </main>
   </div>
 
-  <footer class="footer"><div class="container"><p><span style="color:var(--sakura);">🌸</span> CICD — <a href="https://github.com/KTBsomen/cicd">GitHub</a> | MIT License</p></div></footer>
+  <footer class="footer"><div class="container"><p><i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.4rem;"></i> CICD — <a href="https://github.com/KTBsomen/cicd">GitHub</a> | MIT License</p></div></footer>
   <script src="js/scroll.js"></script>
   <script src="js/nav.js"></script>
 </body>

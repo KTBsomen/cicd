@@ -519,3 +519,40 @@ pre code.hljs {
 .hljs-strong {
   font-weight: bold;
 }
+
+/* ─── Global Terminal Look for Code Blocks ─── */
+pre:not(.terminal-body):not(.file-block pre):not(.gen-preview pre):not(.gen-output pre):not(.way-card pre) {
+  background: #020205 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3) !important;
+  position: relative !important;
+  padding-top: 2.5rem !important; /* Make room for the terminal bar */
+  overflow: hidden !important;
+}
+
+pre:not(.terminal-body):not(.file-block pre):not(.gen-preview pre):not(.gen-output pre):not(.way-card pre)::before {
+  content: "● ● ●" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 1.75rem !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: #ff5f56 !important; /* Red dot */
+  font-size: 0.65rem !important;
+  font-family: Arial, sans-serif !important;
+  padding-left: 0.75rem !important;
+  line-height: 1.75rem !important;
+  letter-spacing: 0.15em !important;
+  text-shadow: 0.75rem 0 0 #ffbd2e, 1.5rem 0 0 #27c93f !important; /* Yellow & Green dots */
+}
+
+/* Exclude file block pre-elements since they have their own explorer bar */
+.file-block pre {
+  padding-top: 1.25rem !important;
+}
+.file-block pre::before {
+  display: none !important;
+}

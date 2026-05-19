@@ -4,6 +4,12 @@
 # ═══════════════════════════════════════════
 set -e
 
+# Ensure dependencies exist before running
+if ! command -v docker &> /dev/null; then
+  echo "❌ Error: Docker is not installed! Aborting run."
+  exit 1
+fi
+
 # 1. Stop and recreate containers in background
 echo "🚀 Starting Docker Compose containers..."
 docker compose up -d --force-recreate

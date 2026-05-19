@@ -4,6 +4,12 @@
 # ═══════════════════════════════════════════
 set -e
 
+# Ensure dependencies exist before running
+if ! command -v python3 &> /dev/null; then
+  echo "❌ Error: Python 3 is not installed! Aborting run."
+  exit 1
+fi
+
 # 1. Activate venv
 source venv/bin/activate
 

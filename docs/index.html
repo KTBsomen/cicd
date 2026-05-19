@@ -3,14 +3,75 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CICD — Deploy in Seconds. Monitor Forever.</title>
-  <meta name="description" content="The zero-config CI/CD tool for indie developers. One binary. No Docker. No YAML. Self-hosted on any VPS.">
-  <meta property="og:title" content="CICD — Deploy in Seconds. Monitor Forever.">
-  <meta property="og:description" content="One binary CI/CD tool for VPS deployments. Auto-deploy on git push, real-time dashboard, rollbacks, health checks.">
+  <title>CICD — Self-Hosted Git-Native Deployments for VPS Infrastructure</title>
+  <meta name="description" content="Self-hosted deployment orchestration for VPS infrastructure. No YAML pipelines. No Kubernetes complexity. Zero lock-in. Just run your scripts safely on bare metal.">
+  <meta property="og:title" content="CICD — Self-Hosted Git-Native VPS Deployments">
+  <meta property="og:description" content="One-binary CI/CD tool for VPS deployments. Auto-deploy on git push, real-time dashboard, rollbacks, and custom health checks.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://cicd.rf.gd">
   <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/docs.css">
   <link rel="stylesheet" href="css/landing.css">
+  <style>
+    /* Styling adjustments for landing page code block overrides */
+    .hero-terminal-wrap {
+      max-width: 540px;
+      width: 100%;
+      margin: 0 auto;
+      filter: drop-shadow(0 0 50px rgba(255,183,197,0.12));
+    }
+    .hero-terminal-wrap pre {
+      margin: 0 !important;
+      font-size: 0.9rem !important;
+      line-height: 1.6 !important;
+      background: #020205 !important;
+      padding-top: 2.75rem !important;
+    }
+    .ways-grid pre {
+      margin-top: 1.5rem !important;
+      background: #020205 !important;
+      padding-top: 2.75rem !important;
+    }
+    .step-card {
+      padding: 2.5rem 2rem;
+      text-align: center;
+    }
+    .step-icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      display: inline-block;
+    }
+    .step-card h3 {
+      font-size: 1.3rem;
+      margin-bottom: 0.75rem;
+      color: var(--text-primary);
+    }
+    .step-card p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+    .arrow-indicator {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--sakura);
+      opacity: 0.5;
+    }
+    .arrow-indicator svg {
+      width: 1.8rem;
+      height: 1.8rem;
+    }
+    @media (max-width: 960px) {
+      .hero-terminal-wrap {
+        margin-top: 2rem;
+      }
+      .arrow-indicator {
+        transform: rotate(90deg);
+        margin: 1rem 0;
+      }
+    }
+  </style>
 </head>
 <body>
 
@@ -20,11 +81,11 @@
   <!-- ═══ NAVIGATION ═══ -->
   <nav class="nav" id="main-nav">
     <div class="nav-inner">
-      <a href="/" class="nav-logo">
-        <span class="sakura-icon">🌸</span> CICD
+      <a href="index.html" class="nav-logo">
+        <i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.4rem;"></i> CICD
       </a>
       <div class="nav-links">
-        <a href="#features">Features</a>
+        <a href="#why">Why CICD?</a>
         <a href="#how-it-works">How It Works</a>
         <a href="#generator">Quick Start</a>
         <a href="docs.html" class="btn btn-outline" style="padding:0.5rem 1.2rem; font-size:0.8rem;">Documentation →</a>
@@ -37,34 +98,49 @@
     <div class="container">
       <div class="hero-content">
         <div class="hero-text">
-          <div class="hero-badge">🌸 Open Source CI/CD</div>
-          <h1>Deploy in Seconds.<br>Monitor Forever.</h1>
+          <div class="hero-badge"><i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.4rem;"></i> Self-Hosted &amp; VPS-First</div>
+          <h1 style="font-size: clamp(2.3rem, 5vw, 3.8rem); line-height:1.15;">Git-Native Deployments<br>For Your Own VPS.</h1>
           <p class="hero-sub">
-            The zero-config CI/CD tool for indie developers.<br>
-            <strong>One binary. No Docker. No YAML.</strong><br>
-            Self-hosted on any VPS — AWS, DigitalOcean, Azure, or your $5 server.
+            Push to GitHub. Deploy anywhere. No Kubernetes required.<br>
+            <strong>Just run your deployment scripts safely on your own infrastructure.</strong>
           </p>
-          <div class="hero-cta">
-            <a href="#generator" class="btn btn-primary">Quick Start →</a>
+          <div class="hero-cta" style="margin-bottom: 2rem;">
+            <a href="#generator" class="btn btn-primary">Get Started instantly →</a>
             <a href="docs.html" class="btn btn-outline">Read Docs</a>
           </div>
           <div class="hero-stats">
             <div>
-              <div class="hero-stat-value" data-count="2" data-suffix="">2</div>
-              <div class="hero-stat-label">Commands to Deploy</div>
+              <div class="hero-stat-value">0</div>
+              <div class="hero-stat-label">YAML Pipelines</div>
             </div>
             <div>
-              <div class="hero-stat-value" data-count="0" data-suffix="">0</div>
-              <div class="hero-stat-label">Config Files Needed</div>
+              <div class="hero-stat-value">1</div>
+              <div class="hero-stat-label">Zero-Dependency Binary</div>
             </div>
             <div>
               <div class="hero-stat-value">∞</div>
-              <div class="hero-stat-label">Projects per Server</div>
+              <div class="hero-stat-label">Projects per VPS</div>
             </div>
           </div>
         </div>
-        <div class="hero-img hide-mobile">
-          <img src="assets/hero.png" alt="CICD Deployment Illustration">
+
+        <div class="hero-terminal-wrap" id="install-terminal">
+          <div class="terminal-mock">
+            <div class="terminal-header">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+              <span class="terminal-title">Terminal — Install CICD instantly</span>
+            </div>
+            <pre class="terminal-body" style="margin:0 !important;"><code class="language-bash"># 1. Run the universal shell installer
+curl -fsSL https://cicd.rf.gd/install.sh | sh
+
+# 2. Start the core background daemon
+sudo ./cicd</code></pre>
+          </div>
+          <div style="margin-top:1rem; text-align:center; font-size:0.8rem; color:var(--text-muted);">
+            <i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.25rem;"></i> Single static binary. Zero dependencies. Under 2 seconds.
+          </div>
         </div>
       </div>
     </div>
@@ -74,67 +150,107 @@
   <section class="section" id="why">
     <div class="container">
       <div class="text-center mb-lg">
-        <span class="badge badge-sakura">Why CICD?</span>
-        <h2 class="mt-md">Stop Fighting Your Pipeline</h2>
-        <p class="mx-auto text-center" style="margin-top:0.5rem;">
-          You just want to push code and have it run. Not write 200 lines of YAML.
+        <span class="badge badge-sakura"><i data-lucide="help-circle" class="icon-sakura" style="margin-right: 0.4rem;"></i> Why CICD?</span>
+        <h2 class="mt-md">Ditch the Bloat. Keep the Power.</h2>
+        <p class="mx-auto text-center" style="margin-top:0.5rem; max-width: 65ch;">
+          A lot of developers are tired of fighting YAML syntax, heavy container overhead, and expensive cloud subscriptions. We brought deployments back to basics.
         </p>
       </div>
       <div class="pain-grid">
         <div class="glass pain-card reveal">
-          <div class="pain-icon">🔧</div>
-          <div class="pain-before">✕ The Problem</div>
-          <h4>Jenkins needs a PhD</h4>
-          <p>Complex pipelines, Java dependencies, plugin hell. Just to deploy a Node.js app.</p>
-          <div class="pain-after">✓ One binary, zero config</div>
+          <div class="pain-icon icon-rose"><i data-lucide="wrench"></i></div>
+          <div class="pain-before"><i data-lucide="x-circle" class="icon-rose" style="margin-right: 0.4rem;"></i> YAML Pipelines</div>
+          <h4>No abstraction syntax hell</h4>
+          <p>Why write complex multi-stage configurations when you already have a perfectly working bash script?</p>
+          <div class="pain-after"><i data-lucide="check-circle" class="icon-green" style="margin-right: 0.4rem;"></i> Just runs your scripts safely</div>
         </div>
         <div class="glass pain-card reveal">
-          <div class="pain-icon">📦</div>
-          <div class="pain-before">✕ The Problem</div>
-          <h4>Docker/K8s is overkill for 1 server</h4>
-          <p>You don't need orchestration for a single VPS. But you still need auto-deploy.</p>
-          <div class="pain-after">✓ Runs directly on your VPS</div>
+          <div class="pain-icon icon-rose"><i data-lucide="package"></i></div>
+          <div class="pain-before"><i data-lucide="x-circle" class="icon-rose" style="margin-right: 0.4rem;"></i> Kubernetes Overhead</div>
+          <h4>Docker is not mandatory</h4>
+          <p>You don't need distributed clustering and heavy container virtualization just to serve a simple Node, Go, or Python app.</p>
+          <div class="pain-after"><i data-lucide="check-circle" class="icon-green" style="margin-right: 0.4rem;"></i> Native VPS / Bare-Metal run</div>
         </div>
         <div class="glass pain-card reveal">
-          <div class="pain-icon">💸</div>
-          <div class="pain-before">✕ The Problem</div>
-          <h4>GitHub Actions costs money</h4>
-          <p>Free tier limits, minutes budgets, no server monitoring, no rollbacks.</p>
-          <div class="pain-after">✓ Self-hosted, forever free</div>
+          <div class="pain-icon icon-rose"><i data-lucide="banknote"></i></div>
+          <div class="pain-before"><i data-lucide="x-circle" class="icon-rose" style="margin-right: 0.4rem;"></i> Cloud-Only CI/CD</div>
+          <h4>No minute budgets or lock-in</h4>
+          <p>GitHub Actions limits your execution time and charges premiums. Run infinite deployments on your own hardware.</p>
+          <div class="pain-after"><i data-lucide="check-circle" class="icon-green" style="margin-right: 0.4rem;"></i> 100% Self-Hosted &amp; Free</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ HOW IT WORKS DIAGRAM ═══ -->
+  <section class="section" id="how-it-works" style="background: rgba(255,255,255,0.01); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+    <div class="container">
+      <div class="text-center mb-lg">
+        <span class="badge badge-cyan"><i data-lucide="eye" class="icon-cyan" style="margin-right: 0.4rem;"></i> Mental Clarity</span>
+        <h2 class="mt-md">How It Works</h2>
+        <p class="mx-auto text-center" style="margin-top:0.5rem;">
+          Get up and running in under two minutes with three simple steps.
+        </p>
+      </div>
+
+      <div class="reveal" style="display: grid; grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr) 40px minmax(0, 1fr); align-items: center; gap: 1rem;">
+        <div class="glass step-card">
+          <div class="step-icon icon-cyan"><i data-lucide="plug"></i></div>
+          <h3>1. Connect Webhook</h3>
+          <p>Add a standard webhook URL to your GitHub repository. Operates securely using SHA256 signatures.</p>
+        </div>
+        <div class="arrow-indicator"><i data-lucide="chevron-right" class="icon-sakura"></i></div>
+        <div class="glass step-card">
+          <div class="step-icon icon-cyan"><i data-lucide="monitor"></i></div>
+          <h3>2. Install Agent</h3>
+          <p>Register the continuous systemd background agent on your VPS with a single-line installer command.</p>
+        </div>
+        <div class="arrow-indicator"><i data-lucide="chevron-right" class="icon-sakura"></i></div>
+        <div class="glass step-card">
+          <div class="step-icon icon-cyan"><i data-lucide="zap"></i></div>
+          <h3>3. Push to Deploy</h3>
+          <p>Git pushes safely trigger your custom <code>.cicd/install.sh</code> and <code>run.sh</code> scripts inside sandboxes.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- ═══ REGISTRATION METHODS ═══ -->
-  <section class="section" id="how-it-works">
+  <section class="section" id="setup-methods">
     <div class="container">
       <div class="text-center mb-lg">
-        <span class="badge badge-cyan">Two Ways to Register</span>
-        <h2 class="mt-md">Flexible Project Setup</h2>
+        <span class="badge badge-cyan"><i data-lucide="sliders" class="icon-cyan" style="margin-right: 0.4rem;"></i> Flexible Setup</span>
+        <h2 class="mt-md">Two Ways to Register Projects</h2>
         <p class="mx-auto text-center" style="margin-top:0.5rem;">
-          The CICD binary always runs as a multi-project manager with the dashboard active. Register projects from the command line or UI.
+          The CICD binary always runs as a multi-project manager with the dashboard active. Register projects from the CLI or UI.
         </p>
       </div>
       <div class="ways-grid">
         <div class="glass glass-sakura way-card reveal">
           <div class="way-label text-sakura">Option A — CLI Registration</div>
           <h3>Register via CLI Flags</h3>
-          <p>Pass your repository URL and settings directly when running the binary. Run it with a different URL to instantly add a new project.</p>
-          <pre><code>sudo ./cicd \
+          <p>Pass your repository URL, target branches, custom webhook ports, Slack notifications, and admin emails directly when starting the daemon.</p>
+          <pre class="terminal-body"><code class="language-bash">sudo ./cicd \
   --repo-url https://github.com/you/app \
-  --admin-email you@example.com</code></pre>
+  --branch main \
+  --webhook 9641 \
+  --webhook-secret mysecret \
+  --admin-email you@example.com \
+  --notify-url https://hooks.slack.com/services/...</code></pre>
           <p class="text-muted" style="font-size:0.8rem; margin-top:1rem;">
-            ✓ Automatic project creation &nbsp; ✓ Updates existing project settings &nbsp; ✓ Web dashboard remains active
+            <i data-lucide="check" class="icon-sakura" style="margin-right: 0.25rem;"></i> Automatic project creation &nbsp; <i data-lucide="check" class="icon-sakura" style="margin-right: 0.25rem;"></i> Updates existing settings &nbsp; <i data-lucide="check" class="icon-sakura" style="margin-right: 0.25rem;"></i> Web dashboard remains active
+          </p>
+          <p style="margin-top: 1.25rem; font-size: 0.8rem; line-height: 1.5; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 0.75rem;">
+            <i data-lucide="lightbulb" class="icon-sakura" style="margin-right: 0.4rem;"></i> <em>Tip: These are just demo values! You don't have to build these flags manually. Use our <a href="#generator" style="color: var(--sakura); text-decoration: underline; font-weight: 600;">Interactive Command Generator</a> below to build your production setup command instantly!</em>
           </p>
         </div>
         <div class="glass glass-cyan way-card reveal">
           <div class="way-label text-cyan">Option B — Web Dashboard</div>
           <h3>Register via Command Center</h3>
           <p>Run the core binary with no repo flags. Open the dashboard in your browser and register/configure projects via the UI.</p>
-          <pre><code>sudo ./cicd</code></pre>
+          <pre class="terminal-body"><code class="language-bash">sudo ./cicd</code></pre>
           <p class="text-muted" style="font-size:0.8rem; margin-top:1rem;">
-            ✓ Interactive creation forms &nbsp; ✓ Visual setting adjustments &nbsp; ✓ Manage all projects from one dashboard
+            <i data-lucide="check" class="icon-cyan" style="margin-right: 0.25rem;"></i> Interactive creation forms &nbsp; <i data-lucide="check" class="icon-cyan" style="margin-right: 0.25rem;"></i> Visual setting adjustments &nbsp; <i data-lucide="check" class="icon-cyan" style="margin-right: 0.25rem;"></i> Manage all projects from one dashboard
           </p>
         </div>
       </div>
@@ -145,52 +261,52 @@
   <section class="section" id="features">
     <div class="container">
       <div class="text-center mb-lg">
-        <span class="badge badge-green">Features</span>
+        <span class="badge badge-green"><i data-lucide="rocket" class="icon-green" style="margin-right: 0.4rem;"></i> Features</span>
         <h2 class="mt-md">Everything You Need. Nothing You Don't.</h2>
       </div>
       <div class="features-grid">
         <div class="glass feature-card reveal">
-          <div class="feature-icon">🚀</div>
+          <div class="feature-icon"><i data-lucide="rocket" class="icon-sakura"></i></div>
           <h4>Auto-Deploy on Git Push</h4>
           <p>GitHub webhook listener with HMAC-SHA256 signature verification. Push → Deploy → Live.</p>
         </div>
         <div class="glass feature-card reveal">
-          <div class="feature-icon">📊</div>
+          <div class="feature-icon"><i data-lucide="bar-chart-2" class="icon-sakura"></i></div>
           <h4>Real-Time Dashboard</h4>
           <p>CPU, Memory, Ports, Uptime — all streamed live via SSE. No page refreshes.</p>
         </div>
         <div class="glass feature-card reveal">
-          <div class="feature-icon">⏪</div>
+          <div class="feature-icon"><i data-lucide="rotate-ccw" class="icon-sakura"></i></div>
           <h4>One-Click Rollback</h4>
           <p>Roll back to any previous commit instantly. Auto-rollback on health check failure.</p>
         </div>
         <div class="glass feature-card reveal">
-          <div class="feature-icon">🩺</div>
+          <div class="feature-icon"><i data-lucide="activity" class="icon-sakura"></i></div>
           <h4>Custom Health Checks</h4>
           <p>Drop a <code>health.sh</code> in your <code>.cicd/</code> folder. CICD runs it every 30 seconds.</p>
         </div>
         <div class="glass feature-card reveal">
-          <div class="feature-icon">🔒</div>
+          <div class="feature-icon"><i data-lucide="lock" class="icon-sakura"></i></div>
           <h4>Sandboxed Execution</h4>
           <p>Each project gets its own Linux user. No root access for your app code. Ever.</p>
         </div>
         <div class="glass feature-card reveal">
-          <div class="feature-icon">🌐</div>
+          <div class="feature-icon"><i data-lucide="globe" class="icon-sakura"></i></div>
           <h4>Multi-Server Fleet Sync</h4>
           <p>Connect MongoDB Atlas (free tier) to sync deployments across your entire fleet.</p>
         </div>
         <div class="glass feature-card reveal">
-          <div class="feature-icon">📌</div>
+          <div class="feature-icon"><i data-lucide="pin" class="icon-sakura"></i></div>
           <h4>Pin & Protect Deployments</h4>
           <p>Pin a service to a commit. New pushes are recorded but never deployed until you unpin.</p>
         </div>
         <div class="glass feature-card reveal">
-          <div class="feature-icon">🔔</div>
+          <div class="feature-icon"><i data-lucide="bell" class="icon-sakura"></i></div>
           <h4>Slack / Discord / Email Alerts</h4>
           <p>Get notified on deploy success, failure, rollback, and crash recovery — everywhere.</p>
         </div>
         <div class="glass feature-card reveal">
-          <div class="feature-icon">🏥</div>
+          <div class="feature-icon"><i data-lucide="heart-pulse" class="icon-sakura"></i></div>
           <h4>Self-Healing Restarts</h4>
           <p>Exponential backoff restart engine. Max 5 retries, then stops to prevent crash loops.</p>
         </div>
@@ -202,7 +318,7 @@
   <section class="section" id="generator">
     <div class="container">
       <div class="text-center mb-lg">
-        <span class="badge badge-sakura">Quick Start</span>
+        <span class="badge badge-sakura"><i data-lucide="terminal" class="icon-sakura" style="margin-right: 0.4rem;"></i> Quick Start</span>
         <h2 class="mt-md">Generate Your Setup Command</h2>
         <p class="mx-auto text-center" style="margin-top:0.5rem;">
           Fill in the form below. Copy the command. Paste it on your server. Done.
@@ -212,52 +328,52 @@
         <div class="glass gen-form" id="gen-form" style="max-height: 600px; overflow-y: auto; padding-right: 1rem;">
           <div class="form-group">
             <label>Repository URL</label>
-            <input type="text" id="gen-repo" placeholder="https://github.com/you/your-app">
+            <input type="text" id="val_vps_repo_source" name="vps_repo_source_field" autocomplete="new-val-repo" placeholder="https://github.com/you/your-app">
           </div>
           <div class="form-row">
             <div class="form-group">
               <label>Service Name (Slug)</label>
-              <input type="text" id="gen-name" placeholder="my-app">
+              <input type="text" id="val_vps_proj_slug" name="vps_proj_slug_field" autocomplete="new-val-slug" placeholder="my-app">
             </div>
             <div class="form-group">
               <label>Branch</label>
-              <input type="text" id="gen-branch" placeholder="main" value="main">
+              <input type="text" id="val_vps_git_branch_name" name="vps_branch_field" autocomplete="new-val-branch" placeholder="main" value="main">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label>Webhook Port</label>
-              <input type="number" id="gen-port" placeholder="9641" value="9641">
+              <input type="number" id="val_vps_listen_port" name="vps_port_field" autocomplete="new-val-port" placeholder="9641" value="9641">
             </div>
             <div class="form-group">
               <label>Deploy Timeout (s)</label>
-              <input type="number" id="gen-timeout" placeholder="1800">
+              <input type="number" id="val_vps_deploy_timeout_limit" name="vps_timeout_field" autocomplete="new-val-timeout" placeholder="1800">
             </div>
           </div>
           <div class="form-group">
             <label>Webhook Secret</label>
             <div style="position:relative">
-              <input type="text" id="gen-secret" placeholder="auto-generated" style="padding-right:5rem; width: 100%;">
+              <input type="text" id="val_vps_webhook_secret_key" name="vps_secret_field" autocomplete="new-val-secret" placeholder="auto-generated" style="padding-right:5rem; width: 100%;">
               <button type="button" id="regen-secret" style="position:absolute;right:4px;top:0.3rem;padding:0.4rem 0.6rem;background:rgba(255,255,255,0.06);border:none;color:var(--text-muted);border-radius:0.5rem;cursor:pointer;font-size:0.7rem;">↻ New</button>
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label>Git Username</label>
-              <input type="text" id="gen-git-user" placeholder="username">
+              <input type="text" id="val_git_auth_username" name="git_user_field" autocomplete="new-val-git-user" placeholder="username">
             </div>
             <div class="form-group">
               <label>Git Token</label>
-              <input type="password" id="gen-git-pass" placeholder="ghp_...">
+              <input type="password" id="val_git_auth_token_secret" name="git_pass_field" autocomplete="new-val-git-token" placeholder="ghp_...">
             </div>
           </div>
           <div class="form-group">
             <label>Slack/Discord Webhook URL</label>
-            <input type="text" id="gen-notify-url" placeholder="https://hooks.slack.com/services/...">
+            <input type="text" id="val_notify_webhook_channel" name="notify_url_field" autocomplete="new-val-notify" placeholder="https://hooks.slack.com/services/...">
           </div>
           <div class="form-group">
             <label>Public IP <span class="text-muted">(auto-detected if empty)</span></label>
-            <input type="text" id="gen-public-ip" placeholder="auto-detected via ipify.org">
+            <input type="text" id="val_vps_public_ip_override" name="vps_ip_field" autocomplete="new-val-ip" placeholder="auto-detected via ipify.org">
           </div>
 
           <!-- SMTP Section -->
@@ -266,26 +382,26 @@
             <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1rem;">Providing an admin email requires SMTP settings to transmit login links.</p>
             <div class="form-group">
               <label>Admin Email</label>
-              <input type="email" id="gen-email" placeholder="you@example.com">
+              <input type="email" id="val_admin_notification_email" name="admin_email_field" autocomplete="new-val-email" placeholder="you@example.com">
             </div>
             <div class="form-row">
               <div class="form-group">
                 <label>SMTP Host</label>
-                <input type="text" id="gen-smtp-host" placeholder="smtp.gmail.com">
+                <input type="text" id="val_smtp_server_hostname" name="smtp_host_field" autocomplete="new-val-smtp-host" placeholder="smtp.gmail.com">
               </div>
               <div class="form-group">
                 <label>SMTP Port</label>
-                <input type="number" id="gen-smtp-port" placeholder="587">
+                <input type="number" id="val_smtp_server_port_num" name="smtp_port_field" autocomplete="new-val-smtp-port" placeholder="587">
               </div>
             </div>
             <div class="form-row">
               <div class="form-group">
                 <label>SMTP Username</label>
-                <input type="text" id="gen-smtp-user" placeholder="SMTP User">
+                <input type="text" id="val_smtp_auth_user" name="smtp_user_field" autocomplete="new-val-smtp-user" placeholder="SMTP User">
               </div>
               <div class="form-group">
                 <label>SMTP Password</label>
-                <input type="password" id="gen-smtp-pass" placeholder="SMTP Password">
+                <input type="password" id="val_smtp_auth_pass_token" name="smtp_pass_field" autocomplete="new-val-smtp-pass" placeholder="SMTP Password">
               </div>
             </div>
           </div>
@@ -299,7 +415,7 @@
             <pre><code id="gen-output-code">Loading...</code></pre>
           </div>
           <div style="margin-top:1.5rem; padding:1rem; background:rgba(74,222,128,0.06); border-radius:var(--radius-sm); border:1px solid rgba(74,222,128,0.15);">
-            <p style="font-size:0.8rem; color:var(--green); font-weight:600; margin-bottom:0.25rem;">💡 What happens next?</p>
+            <p style="font-size:0.8rem; color:var(--green); font-weight:600; margin-bottom:0.25rem;"><i data-lucide="lightbulb" class="icon-green" style="margin-right: 0.25rem;"></i> What happens next?</p>
             <p style="font-size:0.8rem; margin:0;">
               1. Binary installs to <code>/usr/local/bin/cicd</code><br>
               2. Creates systemd service (auto-starts on boot)<br>
@@ -316,73 +432,40 @@
   <section class="section" id="providers">
     <div class="container">
       <div class="text-center mb-lg">
-        <span class="badge badge-cyan">Works Everywhere</span>
+        <span class="badge badge-cyan"><i data-lucide="server" class="icon-cyan" style="margin-right: 0.4rem;"></i> Works Everywhere</span>
         <h2 class="mt-md">Deploy on Any Cloud</h2>
       </div>
       <div class="providers-scroll">
         <a href="docs.html#cloud-aws" class="glass provider-card">
-          <div class="provider-emoji">☁️</div>
+          <div class="provider-emoji"><i data-lucide="cloud" class="icon-cyan"></i></div>
           <h4>AWS EC2</h4>
           <p class="text-muted">View Guide →</p>
         </a>
         <a href="docs.html#cloud-do" class="glass provider-card">
-          <div class="provider-emoji">🌊</div>
+          <div class="provider-emoji"><i data-lucide="compass" class="icon-cyan"></i></div>
           <h4>DigitalOcean</h4>
           <p class="text-muted">View Guide →</p>
         </a>
         <a href="docs.html#cloud-azure" class="glass provider-card">
-          <div class="provider-emoji">🔷</div>
+          <div class="provider-emoji"><i data-lucide="layers" class="icon-cyan"></i></div>
           <h4>Azure VM</h4>
           <p class="text-muted">View Guide →</p>
         </a>
         <a href="docs.html#cloud-hostinger" class="glass provider-card">
-          <div class="provider-emoji">🟣</div>
+          <div class="provider-emoji"><i data-lucide="server" class="icon-cyan"></i></div>
           <h4>Hostinger</h4>
           <p class="text-muted">View Guide →</p>
         </a>
         <a href="docs.html#cloud-hetzner" class="glass provider-card">
-          <div class="provider-emoji">🔴</div>
+          <div class="provider-emoji"><i data-lucide="cpu" class="icon-cyan"></i></div>
           <h4>Hetzner</h4>
           <p class="text-muted">View Guide →</p>
         </a>
         <a href="docs.html#cloud-generic" class="glass provider-card">
-          <div class="provider-emoji">🖥️</div>
+          <div class="provider-emoji"><i data-lucide="monitor" class="icon-cyan"></i></div>
           <h4>Any Linux VPS</h4>
           <p class="text-muted">View Guide →</p>
         </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══ ARCHITECTURE PREVIEW ═══ -->
-  <section class="section">
-    <div class="container">
-      <div class="text-center mb-lg">
-        <span class="badge badge-sakura">Under the Hood</span>
-        <h2 class="mt-md">How CICD Works</h2>
-      </div>
-      <div class="glass reveal" style="padding:2.5rem; text-align:center;">
-        <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:0.5rem; align-items:center; font-family:var(--font-mono); font-size:0.85rem;">
-          <span class="badge badge-cyan" style="font-size:0.8rem;padding:0.5rem 1rem;">Git Push</span>
-          <span class="text-muted">→</span>
-          <span class="badge badge-sakura" style="font-size:0.8rem;padding:0.5rem 1rem;">Webhook</span>
-          <span class="text-muted">→</span>
-          <span class="badge badge-green" style="font-size:0.8rem;padding:0.5rem 1rem;">Queue</span>
-          <span class="text-muted">→</span>
-          <span class="badge badge-cyan" style="font-size:0.8rem;padding:0.5rem 1rem;">Sync Repo</span>
-          <span class="text-muted">→</span>
-          <span class="badge badge-sakura" style="font-size:0.8rem;padding:0.5rem 1rem;">install.sh</span>
-          <span class="text-muted">→</span>
-          <span class="badge badge-green" style="font-size:0.8rem;padding:0.5rem 1rem;">run.sh</span>
-          <span class="text-muted">→</span>
-          <span class="badge badge-cyan" style="font-size:0.8rem;padding:0.5rem 1rem;">Health Check</span>
-          <span class="text-muted">→</span>
-          <span style="color:var(--green);font-weight:800;font-size:1.2rem;">✅ LIVE</span>
-        </div>
-        <p style="margin-top:1.5rem; font-size:0.85rem;">
-          Single Go binary → SQLite state → Systemd managed → Per-project Linux sandboxing → SSE real-time dashboard
-        </p>
-        <a href="docs.html#architecture" class="btn btn-outline" style="margin-top:1.5rem; font-size:0.8rem; padding:0.6rem 1.5rem;">Read Full Architecture →</a>
       </div>
     </div>
   </section>
@@ -392,11 +475,21 @@
     <div class="container reveal">
       <h2>Ready to simplify your deployments?</h2>
       <p class="mx-auto text-center" style="margin-top:0.5rem;margin-bottom:2rem;">
-        No flags needed to start. Run the binary directly, or specify options to customize.
+        No flags needed to start. Run the installer and you're good to go.
       </p>
-      <pre style="display:inline-block;text-align:left;margin-bottom:2rem;"><code># Universal Installer (Autodetects Linux, macOS, ARM/x86)
+      <div class="terminal-mock" style="max-width:600px; margin:0 auto 2rem; filter: drop-shadow(0 0 40px rgba(255,183,197,0.1));">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="terminal-title">Terminal — Setup</span>
+        </div>
+        <pre class="terminal-body" style="text-align:left; margin:0 !important;"><code class="language-bash"># Run the universal installer
 curl -fsSL https://cicd.rf.gd/install.sh | sh
+
+# Boot the daemon
 sudo ./cicd</code></pre>
+      </div>
       <br>
       <a href="docs.html" class="btn btn-primary" style="font-size:1rem;padding:1rem 2.5rem;">
         Read the Full Docs →
@@ -408,7 +501,7 @@ sudo ./cicd</code></pre>
   <footer class="footer">
     <div class="container">
       <p>
-        <span class="sakura-icon" style="color:var(--sakura);">🌸</span> CICD —
+        <i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.4rem;"></i> CICD —
         Made with love by <a href="https://github.com/KTBsomen" target="_blank">KTBsomen</a> &nbsp;|&nbsp;
         <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a> &nbsp;|&nbsp;
         MIT License
@@ -421,5 +514,19 @@ sudo ./cicd</code></pre>
   <script src="js/cherry.js"></script>
   <script src="js/scroll.js"></script>
   <script src="js/generator.js"></script>
+
+  <!-- Lucide SaaS Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Highlight.js Core & Auto highlighting -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('pre code').forEach((el) => {
+        hljs.highlightElement(el);
+      });
+      lucide.createIcons();
+    });
+  </script>
 </body>
 </html>

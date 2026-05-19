@@ -11,9 +11,9 @@
   <!-- ═══ NAVIGATION ═══ -->
   <nav class="nav scrolled">
     <div class="nav-inner">
-      <a href="index.html" class="nav-logo"><span class="sakura-icon">🌸</span> CICD</a>
+      <a href="index.html" class="nav-logo"><i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.4rem;"></i> CICD</a>
       <div style="display: flex; gap: 1.5rem; align-items: center;">
-        <button id="sidebar-toggle" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;display:none;" class="show-mobile">☰</button>
+        <button id="sidebar-toggle" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;display:none;" class="show-mobile"><i data-lucide="menu"></i></button>
         <div class="nav-links hide-mobile">
           <a href="index.html">Home</a>
           <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a>
@@ -52,7 +52,7 @@
 
       <!-- ─── Install vs Run Rule ─── -->
       <div class="callout callout-tip">
-        <div class="callout-title">💡 Core Best Practice: Separating Installs & Builds</div>
+        <div class="callout-title"><i data-lucide="lightbulb" class="icon-sakura" style="margin-right: 0.4rem;"></i> Core Best Practice: Separating Installs & Builds</div>
         <p><strong>Install script (<code>install.sh</code>):</strong> Use <em>strictly</em> for downloading packages or system libraries. This script is hash-cached and only runs when its file content changes.
         <br><strong>Run script (<code>run.sh</code>):</strong> Use for starting the server <em>and running compilation/build steps</em> (like <code>npm run build</code>, <code>next build</code>, or <code>go build</code>). Since <code>run.sh</code> executes on every single webhook push, this ensures your application is compiled with the latest commits on every deploy.</p>
       </div>
@@ -104,7 +104,7 @@ fi</code></pre>
       <h2 id="run-sh">run.sh — Build & Start Application</h2>
       <p><code>run.sh</code> executes on **every deployment** after a git fetch completes. Place your compilers, bundlers, transpilers, and start commands here.</p>
       <div class="callout callout-warn">
-        <div class="callout-title">⚠️ Automatic Port Bind Cleanup</div>
+        <div class="callout-title"><i data-lucide="alert-triangle" class="icon-rose" style="margin-right: 0.4rem;"></i> Automatic Port Bind Cleanup</div>
         <p>Before running <code>run.sh</code>, the CICD runner automatically scans your project config, identifies the active port, and kills any existing process listening on it. You do not need to clean up ports manually in your script.</p>
       </div>
 
@@ -202,7 +202,27 @@ go build -o app ./cmd/server
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
-echo "📦 Downloading node modules..."
+echo "🌸 Initializing Node.js environment..."
+
+# 1. Install Node.js/NPM if missing
+if ! command -v node &> /dev/null; then
+  echo "📥 Node.js is missing. Installing Node.js & NPM..."
+  if command -v apt-get &> /dev/null; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+  elif command -v yum &> /dev/null; then
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+    sudo yum install -y nodejs
+  fi
+fi
+
+# 2. Install PM2 if missing
+if ! command -v pm2 &> /dev/null; then
+  echo "📥 PM2 is missing. Installing PM2 globally..."
+  sudo npm install -g pm2
+fi
+
+echo "🌸 Starting dependencies installation..."
 npm ci --production</code></pre>
           </div>
 
@@ -214,6 +234,17 @@ npm ci --production</code></pre>
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
+
+# Ensure dependencies exist before running
+if ! command -v node &> /dev/null; then
+  echo "❌ Error: Node.js is not installed! Aborting run."
+  exit 1
+fi
+if ! command -v pm2 &> /dev/null; then
+  echo "❌ Error: PM2 is not installed! Aborting run."
+  exit 1
+fi
+
 echo "🧪 Running unit tests..."
 npm test || { echo "❌ Unit tests failed! Aborting deployment."; exit 1; }
 
@@ -252,9 +283,27 @@ curl -sf http://localhost:3000/health || exit 1</code></pre>
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
+echo "🌸 Initializing Python environment..."
+
+# 1. Install Python 3 if missing
+if ! command -v python3 &> /dev/null; then
+  echo "📥 Python 3 is missing. Installing Python 3 & pip..."
+  if command -v apt-get &> /dev/null; then
+    sudo apt-get update -y
+    sudo apt-get install -y python3 python3-pip python3-venv
+  elif command -v yum &> /dev/null; then
+    sudo yum update -y
+    sudo yum install -y python3 python3-pip
+  fi
+fi
+
+echo "🌸 Initializing Python virtual environment..."
+# 2. Create a virtual environment inside 'venv' if it doesn't exist
 if [ ! -d "venv" ]; then
   python3 -m venv venv
 fi
+
+# 3. Activate virtualenv and download packages
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt</code></pre>
@@ -268,14 +317,21 @@ pip install -r requirements.txt</code></pre>
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
+
+# Ensure dependencies exist before running
+if ! command -v python3 &> /dev/null; then
+  echo "❌ Error: Python 3 is not installed! Aborting run."
+  exit 1
+fi
+
 source venv/bin/activate
-echo "🧪 Running pytest..."
-pytest || { echo "❌ Tests failed! Aborting."; exit 1; }
+echo "🧪 Running unit tests with pytest..."
+pytest || { echo "❌ Pytest suites failed! Aborting deployment."; exit 1; }
 
 echo "⚙️ Running database migrations..."
-flask db upgrade || echo "⚠️ No migration scripts, continuing..."
+flask db upgrade || python manage.py db upgrade || echo "⚠️ No migration scripts, continuing..."
 
-echo "🚀 Starting Gunicorn..."
+echo "🚀 Starting Flask app with Gunicorn..."
 gunicorn --workers 3 --bind 0.0.0.0:8000 --pid "$CICD_PID_FILE" app:app</code></pre>
           </div>
 
@@ -305,6 +361,21 @@ curl -sf http://localhost:8000/health || exit 1</code></pre>
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
+echo "🌸 Initializing Go environment..."
+
+# 1. Install Go if missing
+if ! command -v go &> /dev/null; then
+  echo "📥 Go is missing. Installing Go compiler..."
+  if command -v apt-get &> /dev/null; then
+    sudo apt-get update -y
+    sudo apt-get install -y golang
+  elif command -v yum &> /dev/null; then
+    sudo yum update -y
+    sudo yum install -y golang
+  fi
+fi
+
+echo "🌸 Fetching Go dependency modules..."
 go mod download</code></pre>
           </div>
 
@@ -316,13 +387,20 @@ go mod download</code></pre>
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
-echo "🧪 Running tests..."
-go test ./... || { echo "❌ Tests failed!"; exit 1; }
+
+# Ensure dependencies exist before running
+if ! command -v go &> /dev/null; then
+  echo "❌ Error: Go is not installed! Aborting run."
+  exit 1
+fi
+
+echo "🧪 Running package tests..."
+go test ./... || { echo "❌ Go test suites failed! Aborting deployment."; exit 1; }
 
 echo "🔨 Compiling binary..."
-go build -ldflags="-s -w" -o app main.go
+go build -ldflags="-s -w" -o app ./cmd/server/main.go || go build -ldflags="-s -w" -o app main.go
 
-echo "🚀 Starting Go process..."
+echo "🚀 Starting Go binary..."
 ./app > server.log 2>&1 &
 echo $! > "$CICD_PID_FILE"</code></pre>
           </div>
@@ -515,6 +593,21 @@ curl -sf http://localhost:8080/health || curl -sf http://localhost:8080/ || exit
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
+echo "🌸 Initializing React environment..."
+
+# 1. Install Node.js/NPM if missing
+if ! command -v node &> /dev/null; then
+  echo "📥 Node.js is missing. Installing Node.js & NPM..."
+  if command -v apt-get &> /dev/null; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+  elif command -v yum &> /dev/null; then
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+    sudo yum install -y nodejs
+  fi
+fi
+
+echo "🌸 Installing React frontend packages..."
 npm ci</code></pre>
           </div>
 
@@ -526,13 +619,20 @@ npm ci</code></pre>
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
-echo "🧪 Running tests..."
-npm test -- --watchAll=false || { echo "❌ Tests failed!"; exit 1; }
 
-echo "🔨 Generating static distribution folder..."
+# Ensure dependencies exist before running
+if ! command -v node &> /dev/null; then
+  echo "❌ Error: Node.js is not installed! Aborting run."
+  exit 1
+fi
+
+echo "🧪 Running frontend tests..."
+npm test -- --watchAll=false || { echo "❌ React test suites failed! Aborting deployment."; exit 1; }
+
+echo "🔨 Compiling React build folder..."
 npm run build
 
-echo "🚀 Starting local web server..."
+echo "🚀 Starting background static server..."
 npx serve -s build -l 5000 > static.log 2>&1 &
 echo $! > "$CICD_PID_FILE"</code></pre>
           </div>
@@ -563,6 +663,23 @@ curl -sf http://localhost:5000/ || exit 1</code></pre>
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
+echo "🌸 Initializing Docker environment..."
+
+# 1. Install Docker & Compose if missing
+if ! command -v docker &> /dev/null; then
+  echo "📥 Docker is missing. Installing Docker & Docker Compose..."
+  if command -v apt-get &> /dev/null; then
+    sudo apt-get update -y
+    sudo apt-get install -y docker.io docker-compose-v2
+    sudo systemctl enable --now docker
+  elif command -v yum &> /dev/null; then
+    sudo yum update -y
+    sudo yum install -y docker docker-compose-plugin
+    sudo systemctl enable --now docker
+  fi
+fi
+
+echo "🌸 Compiling and building docker images..."
 docker compose build</code></pre>
           </div>
 
@@ -574,26 +691,36 @@ docker compose build</code></pre>
             </div>
             <pre><code class="language-bash">#!/bin/bash
 set -e
-echo "🚀 Booting container fleet..."
+
+# Ensure dependencies exist before running
+if ! command -v docker &> /dev/null; then
+  echo "❌ Error: Docker is not installed! Aborting run."
+  exit 1
+fi
+
+echo "🚀 Starting Docker Compose containers..."
 docker compose up -d --force-recreate
 
-echo "🧪 Running testing suites inside docker..."
-docker compose exec -T app npm test || {
-  echo "❌ Tests failed inside docker! Aborting."
-  docker compose down
-  exit 1
+echo "🧪 Running tests inside app container..."
+docker compose exec -T app npm test || { 
+  echo "❌ Tests failed inside docker! Cleaning up and aborting.";
+  docker compose down;
+  exit 1; 
 }
 
-# Daemon state tracking loop
+echo "⚙️ Initializing health monitor loop..."
 (
   while true; do
     if [ "$(docker inspect -f '{{.State.Running}}' "$(docker compose ps -q app)")" != "true" ]; then
+      echo "❌ App container crashed!"
       exit 1
     fi
     sleep 30
   done
 ) > compose-monitor.log 2>&1 &
-echo $! > "$CICD_PID_FILE"</code></pre>
+
+echo $! > "$CICD_PID_FILE"
+echo "✅ Docker Compose deployment initialized."</code></pre>
           </div>
 
           <div class="file-block">
@@ -646,7 +773,7 @@ curl -sf http://localhost:8080/health || exit 1</code></pre>
     </main>
   </div>
 
-  <footer class="footer"><div class="container"><p><span style="color:var(--sakura);">🌸</span> CICD — <a href="https://github.com/KTBsomen/cicd">GitHub</a> | MIT License</p></div></footer>
+  <footer class="footer"><div class="container"><p><i data-lucide="flower-2" class="icon-sakura" style="margin-right: 0.4rem;"></i> CICD — <a href="https://github.com/KTBsomen/cicd">GitHub</a> | MIT License</p></div></footer>
   <script src="js/scroll.js"></script>
   <script src="js/nav.js"></script>
 </body>

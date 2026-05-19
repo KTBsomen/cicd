@@ -272,3 +272,26 @@ tr:hover td { background: rgba(255,255,255,0.015); }
   .section { padding: var(--space-2xl) 0; }
   .hide-mobile { display: none !important; }
 }
+
+/* ─── Dynamic SaaS Lucide SVG Icons ─── */
+svg.lucide, i[data-lucide] svg, [data-lucide] {
+  display: inline-block;
+  vertical-align: middle;
+  width: 1.2em;
+  height: 1.2em;
+  stroke-width: 2.2px;
+  stroke: currentColor;
+  fill: none;
+}
+.icon-sakura {
+  color: var(--sakura) !important;
+}
+.icon-cyan {
+  color: var(--cyan) !important;
+}
+.icon-green {
+  color: var(--green) !important;
+}
+.icon-rose {
+  color: var(--rose) !important;
+}

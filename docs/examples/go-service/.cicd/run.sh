@@ -4,6 +4,12 @@
 # ═══════════════════════════════════════════
 set -e
 
+# Ensure dependencies exist before running
+if ! command -v go &> /dev/null; then
+  echo "❌ Error: Go is not installed! Aborting run."
+  exit 1
+fi
+
 # 1. Run packages test suites
 echo "🧪 Running package tests..."
 go test ./... || { echo "❌ Go test suites failed! Aborting deployment."; exit 1; }
