@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The .cicd Folder — CICD Documentation</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/docs.css">
+</head>
+<body>
+  <!-- ═══ NAVIGATION ═══ -->
+  <nav class="nav scrolled">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-logo"><span class="sakura-icon">🌸</span> CICD</a>
+      <div style="display: flex; gap: 1.5rem; align-items: center;">
+        <button id="sidebar-toggle" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;display:none;" class="show-mobile">☰</button>
+        <div class="nav-links hide-mobile">
+          <a href="index.html">Home</a>
+          <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="docs-layout">
+    <!-- Left Sidebar -->
+    <aside class="docs-sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">Getting Started</div>
+        <a href="quickstart.html" class="sidebar-link">Quick Start</a>
+        <a href="cicd-folder.html" class="sidebar-link active">The .cicd Folder</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Deep Dives</div>
+        <a href="architecture.html" class="sidebar-link">Architecture</a>
+        <a href="cli-reference.html" class="sidebar-link">CLI Reference</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Support</div>
+        <a href="troubleshooting.html" class="sidebar-link">Troubleshooting & FAQ</a>
+      </div>
+    </aside>
+
+    <!-- Overlay for mobile sidebar -->
+    <div id="sidebar-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:150;display:none;"></div>
+
+    <!-- Main Content -->
+    <main class="docs-content">
+      <span class="badge badge-cyan">Page 2 of 5</span>
+      <h1>The .cicd Folder</h1>
+      <p>The <code>.cicd/</code> directory in your repository root houses the execution hooks that CICD runs to install dependencies and boot your application.</p>
+
+      <!-- ─── Install vs Run Rule ─── -->
+      <div class="callout callout-tip">
+        <div class="callout-title">💡 Core Best Practice: Separating Installs & Builds</div>
+        <p><strong>Install script (<code>install.sh</code>):</strong> Use <em>strictly</em> for downloading packages or system libraries. This script is hash-cached and only runs when its file content changes.
+        <br><strong>Run script (<code>run.sh</code>):</strong> Use for starting the server <em>and running compilation/build steps</em> (like <code>npm run build</code>, <code>next build</code>, or <code>go build</code>). Since <code>run.sh</code> executes on every single webhook push, this ensures your application is compiled with the latest commits on every deploy.</p>
+      </div>
+
+      <!-- ─── Folder Structure ─── -->
+      <h2 id="structure">Folder Structure</h2>
+      <pre><code>your-project/
+├── .cicd/
+│   ├── install.sh      ← Download dependencies & packages (runs on content change)
+│   ├── run.sh           ← Compile/build & start your application (runs every deploy)
+│   ├── health.sh        ← (Optional) Custom health verification loop
+│   └── timeout          ← (Optional) Deploy timeout override in seconds
+├── src/
+├── package.json
+└── ...</code></pre>
+
+      <!-- ─── install.sh ─── -->
+      <h2 id="install-sh">install.sh — Dependency Downloads</h2>
+      <p>Use <code>install.sh</code> to download external modules. It executes under a sandboxed system account with temporary NOPASSWD sudo access for package managers.</p>
+
+      <h3>Node.js Example</h3>
+      <pre><code>#!/bin/bash
+echo "📦 Downloading node modules..."
+# Use ci (clean install) for quick and predictable package setups
+npm ci --production</code></pre>
+
+      <h3>Python Example</h3>
+      <pre><code>#!/bin/bash
+echo "📦 Building Virtualenv..."
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt</code></pre>
+
+      <h3>Go Example</h3>
+      <pre><code>#!/bin/bash
+echo "📦 Downloading Go dependencies..."
+go mod download</code></pre>
+
+      <h3>Rust Example</h3>
+      <pre><code>#!/bin/bash
+# Install cargo compiler if missing
+if ! command -v cargo &> /dev/null; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source "$HOME/.cargo/env"
+fi</code></pre>
+
+      <!-- ─── run.sh ─── -->
+      <h2 id="run-sh">run.sh — Build & Start Application</h2>
+      <p><code>run.sh</code> executes on **every deployment** after a git fetch completes. Place your compilers, bundlers, transpilers, and start commands here.</p>
+      <div class="callout callout-warn">
+        <div class="callout-title">⚠️ Automatic Port Bind Cleanup</div>
+        <p>Before running <code>run.sh</code>, the CICD runner automatically scans your project config, identifies the active port, and kills any existing process listening on it. You do not need to clean up ports manually in your script.</p>
+      </div>
+
+      <h3>Node.js/Next.js Build & Start</h3>
+      <pre><code>#!/bin/bash
+# 1. Compile project on every deploy
+echo "🔨 Running webpack/next build..."
+npm run build
+
+# 2. Launch server in foreground (Tier 1)
+echo "🚀 Starting Node server..."
+node dist/index.js</code></pre>
+
+      <h3>Python Web App</h3>
+      <pre><code>#!/bin/bash
+source venv/bin/activate
+
+# 1. Run migrations on every deploy
+python manage.py migrate
+
+# 2. Start server
+gunicorn myproject.wsgi:application --bind 0.0.0.0:8000</code></pre>
+
+      <h3>Go Compile & Run</h3>
+      <pre><code>#!/bin/bash
+# 1. Compile on every deploy
+go build -o app ./cmd/server
+
+# 2. Run binary
+./app</code></pre>
+
+      <h3>Rust Compile & Run</h3>
+      <pre><code>#!/bin/bash
+# 1. Build release binary
+cargo build --release
+
+# 2. Run binary
+./target/release/my-rust-app</code></pre>
+      <!-- ─── Testing inside run.sh ─── -->
+      <h2 id="testing">Running Tests on Every Deploy</h2>
+      <p>If you want to run automated test suites (unit tests, security checks, linting) before your code is built and deployed, you should trigger them directly in your <code>run.sh</code> file. Because <code>run.sh</code> runs synchronously on every webhook push, if any command returns a non-zero exit code, the deployment fails, and the orchestrator automatically triggers a rollback to the previous stable commit.</p>
+      
+      <h3>Node.js Test & Build Example</h3>
+      <pre><code>#!/bin/bash
+# 1. Run unit/integration tests first
+echo "🧪 Running test suites..."
+npm test || { echo "❌ Tests failed! Aborting deployment."; exit 1; }
+
+# 2. Compile/build project on success
+echo "🔨 Running build..."
+npm run build
+
+# 3. Launch application server
+echo "🚀 Starting Node server..."
+node dist/index.js</code></pre>
+
+      <h3>Go Test & Build Example</h3>
+      <pre><code>#!/bin/bash
+# 1. Run test suite
+echo "🧪 Testing Go packages..."
+go test ./... || { echo "❌ Go tests failed! Aborting deployment."; exit 1; }
+
+# 2. Compile on success
+go build -o app ./cmd/server
+
+# 3. Run binary
+./app</code></pre>
+
+      <!-- ─── Interactive Examples & Boilerplates ─── -->
+      <h2 id="boilerplates">Production-Ready Project Boilerplates</h2>
+      <p>We provide fully configured boilerplate directories for standard frameworks under the <code>docs/examples/</code> directory of the repository. You can explore, host, or reference these directly on GitHub:</p>
+      
+      <div class="code-tabs">
+        <div class="code-tab-nav">
+          <button class="code-tab-btn active" data-tab="node-pm2">Node.js (PM2)</button>
+          <button class="code-tab-btn" data-tab="py-flask">Python (Flask)</button>
+          <button class="code-tab-btn" data-tab="go-service">Go Service</button>
+          <button class="code-tab-btn" data-tab="php-laravel">PHP (Laravel)</button>
+          <button class="code-tab-btn" data-tab="rust-service">Rust (Cargo)</button>
+          <button class="code-tab-btn" data-tab="react-static">React Static</button>
+          <button class="code-tab-btn" data-tab="docker-comp">Docker Compose</button>
+        </div>
+
+        <!-- Node PM2 Tab -->
+        <div class="code-tab-content active" data-tab="node-pm2">
+          <div style="padding:1rem 1.5rem; border-bottom:1px solid var(--border); font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            📂 GitHub Path: <a href="https://github.com/KTBsomen/cicd/tree/main/docs/examples/nodejs-pm2" target="_blank" style="color:var(--sakura);">docs/examples/nodejs-pm2/</a>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/install.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+echo "📦 Downloading node modules..."
+npm ci --production</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/run.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+echo "🧪 Running unit tests..."
+npm test || { echo "❌ Unit tests failed! Aborting deployment."; exit 1; }
+
+echo "🔨 Running build..."
+npm run build --if-present
+
+echo "🚀 Deploying with PM2..."
+pm2 delete "$CICD_SERVICE_NAME" 2>/dev/null || true
+pm2 start dist/index.js --name "$CICD_SERVICE_NAME"
+pm2 pid "$CICD_SERVICE_NAME" > "$CICD_PID_FILE"</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/health.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+curl -sf http://localhost:3000/health || exit 1</code></pre>
+          </div>
+        </div>
+
+        <!-- Python Flask Tab -->
+        <div class="code-tab-content" data-tab="py-flask">
+          <div style="padding:1rem 1.5rem; border-bottom:1px solid var(--border); font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            📂 GitHub Path: <a href="https://github.com/KTBsomen/cicd/tree/main/docs/examples/python-flask" target="_blank" style="color:var(--sakura);">docs/examples/python-flask/</a>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/install.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+if [ ! -d "venv" ]; then
+  python3 -m venv venv
+fi
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/run.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+source venv/bin/activate
+echo "🧪 Running pytest..."
+pytest || { echo "❌ Tests failed! Aborting."; exit 1; }
+
+echo "⚙️ Running database migrations..."
+flask db upgrade || echo "⚠️ No migration scripts, continuing..."
+
+echo "🚀 Starting Gunicorn..."
+gunicorn --workers 3 --bind 0.0.0.0:8000 --pid "$CICD_PID_FILE" app:app</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/health.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+curl -sf http://localhost:8000/health || exit 1</code></pre>
+          </div>
+        </div>
+
+        <!-- Go Service Tab -->
+        <div class="code-tab-content" data-tab="go-service">
+          <div style="padding:1rem 1.5rem; border-bottom:1px solid var(--border); font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            📂 GitHub Path: <a href="https://github.com/KTBsomen/cicd/tree/main/docs/examples/go-service" target="_blank" style="color:var(--sakura);">docs/examples/go-service/</a>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/install.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+go mod download</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/run.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+echo "🧪 Running tests..."
+go test ./... || { echo "❌ Tests failed!"; exit 1; }
+
+echo "🔨 Compiling binary..."
+go build -ldflags="-s -w" -o app main.go
+
+echo "🚀 Starting Go process..."
+./app > server.log 2>&1 &
+echo $! > "$CICD_PID_FILE"</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/health.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+curl -sf http://localhost:8080/health || exit 1</code></pre>
+          </div>
+        </div>
+
+        <!-- PHP Laravel Tab -->
+        <div class="code-tab-content" data-tab="php-laravel">
+          <div style="padding:1rem 1.5rem; border-bottom:1px solid var(--border); font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            📂 GitHub Path: <a href="https://github.com/KTBsomen/cicd/tree/main/docs/examples/php-laravel" target="_blank" style="color:var(--sakura);">docs/examples/php-laravel/</a>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/install.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+echo "🌸 Initializing environment for PHP & Laravel..."
+
+# 1. Install PHP and extensions if missing
+if ! command -v php &> /dev/null; then
+  echo "📥 Installing PHP & common extensions..."
+  if command -v apt-get &> /dev/null; then
+    sudo apt-get update -y
+    sudo apt-get install -y php php-cli php-fpm php-mbstring php-xml php-bcmath php-curl php-zip php-mysql unzip
+  elif command -v yum &> /dev/null; then
+    sudo yum update -y
+    sudo yum install -y php php-cli php-fpm php-mbstring php-xml php-bcmath php-curl php-zip php-mysqlnd unzip
+  fi
+fi
+
+# 2. Install Composer if missing
+if ! command -v composer &> /dev/null; then
+  echo "📥 Installing Composer..."
+  curl -sS https://getcomposer.org/installer | php
+  sudo mv composer.phar /usr/local/bin/composer
+fi
+
+# 3. Install NPM/Node if missing
+if ! command -v npm &> /dev/null; then
+  echo "📥 Installing Node.js & NPM..."
+  if command -v apt-get &> /dev/null; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+  elif command -v yum &> /dev/null; then
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+    sudo yum install -y nodejs
+  fi
+fi
+
+# 4. Install Composer dependencies
+echo "🌸 Installing Composer dependencies..."
+composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+
+# 5. Install front-end dependencies if package.json exists
+if [ -f "package.json" ]; then
+  echo "📦 Installing npm packages..."
+  npm ci
+fi</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/run.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+
+# 1. Run database migrations
+echo "⚙️ Running database migrations..."
+php artisan migrate --force || echo "⚠️ Migration failed or not configured, continuing..."
+
+# 2. Optimize Laravel cache
+echo "⚡ Optimizing application configuration and routes..."
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+# 3. Build front-end assets
+if [ -f "package.json" ]; then
+  echo "🔨 Compiling front-end assets..."
+  npm run build
+fi
+
+# 4. Start local development server (background)
+echo "🚀 Starting Laravel server..."
+php artisan serve --host 0.0.0.0 --port 8000 > laravel.log 2>&1 &
+echo $! > "$CICD_PID_FILE"</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/health.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+echo "🔍 Checking Laravel service health..."
+curl -sf http://localhost:8000/ || exit 1</code></pre>
+          </div>
+        </div>
+
+        <!-- Rust Tab -->
+        <div class="code-tab-content" data-tab="rust-service">
+          <div style="padding:1rem 1.5rem; border-bottom:1px solid var(--border); font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            📂 GitHub Path: <a href="https://github.com/KTBsomen/cicd/tree/main/docs/examples/rust" target="_blank" style="color:var(--sakura);">docs/examples/rust/</a>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/install.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+if ! command -v cargo &> /dev/null; then
+  echo "🦀 Installing Rust & Cargo toolchain..."
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  source "$HOME/.cargo/env"
+else
+  echo "🦀 Cargo detected: $(cargo --version)"
+fi
+echo "📦 Fetching Cargo crates..."
+cargo fetch</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/run.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+if [ -f "$HOME/.cargo/env" ]; then
+  source "$HOME/.cargo/env"
+fi
+echo "🧪 Running unit & integration tests..."
+cargo test || { echo "❌ Rust test suite failed! Aborting deployment."; exit 1; }
+
+echo "🔨 Building release binary..."
+cargo build --release
+
+echo "🚀 Booting Rust service..."
+./target/release/rust-service > rust.log 2>&1 &
+echo $! > "$CICD_PID_FILE"</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/health.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+echo "🔍 Checking Rust service health..."
+curl -sf http://localhost:8080/health || curl -sf http://localhost:8080/ || exit 1</code></pre>
+          </div>
+        </div>
+
+        <!-- React Static Tab -->
+        <div class="code-tab-content" data-tab="react-static">
+          <div style="padding:1rem 1.5rem; border-bottom:1px solid var(--border); font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            📂 GitHub Path: <a href="https://github.com/KTBsomen/cicd/tree/main/docs/examples/react-static" target="_blank" style="color:var(--sakura);">docs/examples/react-static/</a>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/install.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+npm ci</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/run.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+echo "🧪 Running tests..."
+npm test -- --watchAll=false || { echo "❌ Tests failed!"; exit 1; }
+
+echo "🔨 Generating static distribution folder..."
+npm run build
+
+echo "🚀 Starting local web server..."
+npx serve -s build -l 5000 > static.log 2>&1 &
+echo $! > "$CICD_PID_FILE"</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/health.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+curl -sf http://localhost:5000/ || exit 1</code></pre>
+          </div>
+        </div>
+
+        <!-- Docker Compose Tab -->
+        <div class="code-tab-content" data-tab="docker-comp">
+          <div style="padding:1rem 1.5rem; border-bottom:1px solid var(--border); font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
+            📂 GitHub Path: <a href="https://github.com/KTBsomen/cicd/tree/main/docs/examples/docker-compose" target="_blank" style="color:var(--sakura);">docs/examples/docker-compose/</a>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/install.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+docker compose build</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/run.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+echo "🚀 Booting container fleet..."
+docker compose up -d --force-recreate
+
+echo "🧪 Running testing suites inside docker..."
+docker compose exec -T app npm test || {
+  echo "❌ Tests failed inside docker! Aborting."
+  docker compose down
+  exit 1
+}
+
+# Daemon state tracking loop
+(
+  while true; do
+    if [ "$(docker inspect -f '{{.State.Running}}' "$(docker compose ps -q app)")" != "true" ]; then
+      exit 1
+    fi
+    sleep 30
+  done
+) > compose-monitor.log 2>&1 &
+echo $! > "$CICD_PID_FILE"</code></pre>
+          </div>
+
+          <div class="file-block">
+            <div class="file-header">
+              <span class="file-icon">📄</span>
+              <span class="file-name">.cicd/health.sh</span>
+              <span class="file-lang">bash</span>
+            </div>
+            <pre><code class="language-bash">#!/bin/bash
+set -e
+curl -sf http://localhost:8080/health || exit 1</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Process Tiers ─── -->
+      <h2 id="process-tiers">Process Execution Tiers</h2>
+      <p>CICD automatically monitors application execution using four monitoring Tiers:</p>
+      
+      <h3>Tier 1 — Foreground (Default)</h3>
+      <p>Your application starts in the foreground (e.g. <code>node index.js</code>). The Go engine tracks the runner bash process directly. Recommended for most web applications.</p>
+
+      <h3>Tier 2 — Background</h3>
+      <p>For processes started in the background using the ampersand (e.g. <code>node index.js &</code>). CICD scans the active Linux process tree to monitor background children.</p>
+
+      <h3>Tier 3 — Delegating (PM2 / Tmux / Screen)</h3>
+      <p>If you use external managers, write the target PID to the environment variable <code>$CICD_PID_FILE</code>. The runner will monitor that specific PID.</p>
+      <pre><code># Example: run.sh using PM2
+#!/bin/bash
+pm2 delete "$CICD_SERVICE_NAME" 2>/dev/null || true
+pm2 start index.js --name "$CICD_SERVICE_NAME"
+
+# Write managed PID for telemetry
+pm2 pid "$CICD_SERVICE_NAME" > "$CICD_PID_FILE"</code></pre>
+
+      <h3>Tier 4 — External (Docker / Daemons)</h3>
+      <p>If your application operates as a Docker container or detached system daemon, track health using a custom <code>health.sh</code> file. CICD runs it in a loop every 30 seconds.</p>
+
+      <!-- ─── health.sh ─── -->
+      <h2 id="health-sh">health.sh — Custom Health Watchdog</h2>
+      <p>An optional script that checks system readiness. Exit code <code>0</code> indicates a healthy service. Any other exit code signals a crash, triggering automatic rolling restarts.</p>
+      <pre><code># Example: .cicd/health.sh
+#!/bin/bash
+curl -sf http://localhost:8080/health || exit 1</code></pre>
+
+      <div style="display:flex;justify-content:space-between;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);">
+        <a href="quickstart.html" class="btn btn-outline" style="font-size:0.8rem;">← Quick Start</a>
+        <a href="architecture.html" class="btn btn-primary" style="font-size:0.8rem;">Next: Architecture →</a>
+      </div>
+    </main>
+  </div>
+
+  <footer class="footer"><div class="container"><p><span style="color:var(--sakura);">🌸</span> CICD — <a href="https://github.com/KTBsomen/cicd">GitHub</a> | MIT License</p></div></footer>
+  <script src="js/scroll.js"></script>
+  <script src="js/nav.js"></script>
+</body>
+</html>

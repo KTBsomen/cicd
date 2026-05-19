@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI & Flags Reference — CICD Documentation</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/docs.css">
+</head>
+<body>
+  <!-- ═══ NAVIGATION ═══ -->
+  <nav class="nav scrolled">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-logo"><span class="sakura-icon">🌸</span> CICD</a>
+      <div style="display: flex; gap: 1.5rem; align-items: center;">
+        <button id="sidebar-toggle" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;display:none;" class="show-mobile">☰</button>
+        <div class="nav-links hide-mobile">
+          <a href="index.html">Home</a>
+          <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="docs-layout">
+    <!-- Left Sidebar -->
+    <aside class="docs-sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">Getting Started</div>
+        <a href="quickstart.html" class="sidebar-link">Quick Start</a>
+        <a href="cicd-folder.html" class="sidebar-link">The .cicd Folder</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Deep Dives</div>
+        <a href="architecture.html" class="sidebar-link">Architecture</a>
+        <a href="cli-reference.html" class="sidebar-link active">CLI Reference</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Support</div>
+        <a href="troubleshooting.html" class="sidebar-link">Troubleshooting & FAQ</a>
+      </div>
+    </aside>
+
+    <!-- Overlay for mobile sidebar -->
+    <div id="sidebar-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:150;display:none;"></div>
+
+    <!-- Main Content -->
+    <main class="docs-content">
+      <span class="badge badge-cyan">Page 4 of 5</span>
+      <h1>CLI & Flags Reference</h1>
+      <p>Comprehensive reference manual for all command-line operations, interactive utilities, and configuration flags.</p>
+
+      <!-- ─── CLI Commands ─── -->
+      <h2 id="cli-commands">1. Command Dispatcher</h2>
+      <p>The <code>cicd</code> binary can be executed with specific commands for project management, logging, diagnostics, and recovery. Run these directly in your terminal:</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Usage</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>list</code> / <code>ls</code></td>
+            <td><code>cicd list</code></td>
+            <td>Lists all registered services on the system, their deployment status, and current active commit hashes.</td>
+          </tr>
+          <tr>
+            <td><code>info</code></td>
+            <td><code>cicd info</code></td>
+            <td>Prints setup details for the Command Center, including access tokens, API urls, webhook endpoints, and guide links.</td>
+          </tr>
+          <tr>
+            <td><code>status</code></td>
+            <td><code>cicd status</code></td>
+            <td>Checks if the systemd background daemon is running, active, and loaded.</td>
+          </tr>
+          <tr>
+            <td><code>start</code></td>
+            <td><code>cicd start</code></td>
+            <td>Launches or starts the background orchestrator systemd service.</td>
+          </tr>
+          <tr>
+            <td><code>stop</code></td>
+            <td><code>cicd stop</code></td>
+            <td>Halts the background orchestrator service.</td>
+          </tr>
+          <tr>
+            <td><code>restart</code></td>
+            <td><code>cicd restart</code></td>
+            <td>Restarts the background orchestrator service to apply updates.</td>
+          </tr>
+          <tr>
+            <td><code>logs</code> / <code>log</code></td>
+            <td><code>cicd log [service]</code></td>
+            <td>Tails the live stdout/stderr logs. Run without args for system logs, or specify a project slug (e.g. <code>cicd log my-app</code>).</td>
+          </tr>
+          <tr>
+            <td><code>token</code></td>
+            <td><code>cicd token [--force]</code></td>
+            <td>Retrieves the current onboarding token. Add <code>--force</code> to regenerate a new secure token.</td>
+          </tr>
+          <tr>
+            <td><code>pin</code></td>
+            <td><code>cicd pin &lt;service&gt; &lt;hash&gt;</code></td>
+            <td>Pins a service deployment to a specific commit. Webhooks will log incoming push events but skip builds.</td>
+          </tr>
+          <tr>
+            <td><code>unpin</code></td>
+            <td><code>cicd unpin &lt;service&gt;</code></td>
+            <td>Removes pin constraints from a service, enabling webhook deployments again.</td>
+          </tr>
+          <tr>
+            <td><code>history</code></td>
+            <td><code>cicd history &lt;service&gt;</code></td>
+            <td>Displays the deployment history list, timestamps, status, and authors.</td>
+          </tr>
+          <tr>
+            <td><code>rollback</code></td>
+            <td><code>cicd rollback &lt;service&gt; &lt;hash&gt;</code></td>
+            <td>Rolls back the environment state to a previous commit. <strong>Skips the install.sh hash check</strong> to force environment re-evaluation.</td>
+          </tr>
+          <tr>
+            <td><code>reinstall</code></td>
+            <td><code>cicd reinstall &lt;service&gt;</code></td>
+            <td>Forces a clean environment reinstall by executing <code>install.sh</code>, bypassing the hash cache.</td>
+          </tr>
+          <tr>
+            <td><code>doctor</code></td>
+            <td><code>cicd doctor</code></td>
+            <td>Runs automated system-level diagnostic health checks on ports, SQLite database connection (<code>/etc/cicd/data/cicd.db</code>), and SMTP availability.</td>
+          </tr>
+          <tr>
+            <td><code>uninstall</code></td>
+            <td><code>cicd uninstall</code></td>
+            <td>Safely stops the service daemon, disables it from startup, and cleans up configurations.</td>
+          </tr>
+          <tr>
+            <td><code>help</code></td>
+            <td><code>cicd help</code></td>
+            <td>Prints a formatted guide of all commands.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- ─── CLI Flags ─── -->
+      <h2 id="cli-flags">2. Orchestrator Flags</h2>
+      <p>All flags are optional. Running the binary without flags launches the multi-project orchestrator daemon on the default port <code>9641</code>. If <code>--repo-url</code> is passed, the binary registers/configures that project first before starting the background daemon listener.</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Flag</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>--repo-url</code></td>
+            <td>—</td>
+            <td>Target Git repository URL to clone and monitor. Passing this enters project configuration mode.</td>
+          </tr>
+          <tr>
+            <td><code>--branch</code></td>
+            <td><code>main</code></td>
+            <td>The repository branch to watch for push events.</td>
+          </tr>
+          <tr>
+            <td><code>--webhook</code></td>
+            <td><code>9641</code></td>
+            <td>The TCP port for the webhook listener and Command Center API/Dashboard.</td>
+          </tr>
+          <tr>
+            <td><code>--webhook-secret</code></td>
+            <td><em>auto-generated</em></td>
+            <td>Secure signature token for verifying incoming payloads (HMAC-SHA256).</td>
+          </tr>
+          <tr>
+            <td><code>--admin-email</code></td>
+            <td>—</td>
+            <td>Email address to receive alerts. **Requires SMTP credentials to be set up.**</td>
+          </tr>
+          <tr>
+            <td><code>--public-ip</code></td>
+            <td><em>auto-detected</em></td>
+            <td>Manual override for the public IP address (useful for local dev with <code>127.0.0.1</code>).</td>
+          </tr>
+          <tr>
+            <td><code>--git-username</code></td>
+            <td>—</td>
+            <td>Username for accessing private repositories.</td>
+          </tr>
+          <tr>
+            <td><code>--git-password</code></td>
+            <td>—</td>
+            <td>Token or password for accessing private repositories.</td>
+          </tr>
+          <tr>
+            <td><code>--service-name</code></td>
+            <td><code>mycicdapp</code></td>
+            <td>Unique identifier slug for this project (letters, numbers, hyphens).</td>
+          </tr>
+          <tr>
+            <td><code>--service-dir</code></td>
+            <td><code>/home/</code></td>
+            <td>Base system directory under which the sandboxed user home is generated.</td>
+          </tr>
+          <tr>
+            <td><code>--service-user</code></td>
+            <td><em>auto-generated</em></td>
+            <td>Pre-existing system username to run as, overriding the auto-provisioned sandboxed user.</td>
+          </tr>
+          <tr>
+            <td><code>--mongodb-uri</code></td>
+            <td>—</td>
+            <td>MongoDB Atlas connection string to sync fleet state across multiple servers.</td>
+          </tr>
+          <tr>
+            <td><code>--smtp-host</code></td>
+            <td>—</td>
+            <td>SMTP server host for sending email notifications.</td>
+          </tr>
+          <tr>
+            <td><code>--smtp-port</code></td>
+            <td><code>587</code></td>
+            <td>SMTP port for email alerts.</td>
+          </tr>
+          <tr>
+            <td><code>--smtp-user</code></td>
+            <td>—</td>
+            <td>SMTP username credentials.</td>
+          </tr>
+          <tr>
+            <td><code>--smtp-pass</code></td>
+            <td>—</td>
+            <td>SMTP password credentials.</td>
+          </tr>
+          <tr>
+            <td><code>--notify-url</code></td>
+            <td>—</td>
+            <td>Slack, Discord, or generic Webhook URL for real-time channel deployment alerts.</td>
+          </tr>
+          <tr>
+            <td><code>--deploy-timeout</code></td>
+            <td><code>1800</code></td>
+            <td>Global timeout in seconds for executing <code>install.sh</code>. (default: 30 minutes).</td>
+          </tr>
+          <tr>
+            <td><code>--setup</code></td>
+            <td>—</td>
+            <td>Set to <code>run</code> to test the orchestrator directly in the foreground (skips systemd setup).</td>
+          </tr>
+          <tr>
+            <td><code>--service-reset</code></td>
+            <td><code>false</code></td>
+            <td>Re-writes systemd unit files and updates daemon configurations.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="display:flex;justify-content:space-between;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);">
+        <a href="architecture.html" class="btn btn-outline" style="font-size:0.8rem;">← Architecture</a>
+        <a href="troubleshooting.html" class="btn btn-primary" style="font-size:0.8rem;">Next: Troubleshooting →</a>
+      </div>
+    </main>
+  </div>
+
+  <footer class="footer"><div class="container"><p><span style="color:var(--sakura);">🌸</span> CICD — <a href="https://github.com/KTBsomen/cicd">GitHub</a> | MIT License</p></div></footer>
+  <script src="js/scroll.js"></script>
+  <script src="js/nav.js"></script>
+</body>
+</html>

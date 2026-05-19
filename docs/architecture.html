@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture Deep Dive — CICD Documentation</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/docs.css">
+</head>
+<body>
+  <!-- ═══ NAVIGATION ═══ -->
+  <nav class="nav scrolled">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-logo"><span class="sakura-icon">🌸</span> CICD</a>
+      <div style="display: flex; gap: 1.5rem; align-items: center;">
+        <button id="sidebar-toggle" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;display:none;" class="show-mobile">☰</button>
+        <div class="nav-links hide-mobile">
+          <a href="index.html">Home</a>
+          <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="docs-layout">
+    <!-- Left Sidebar -->
+    <aside class="docs-sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">Getting Started</div>
+        <a href="quickstart.html" class="sidebar-link">Quick Start</a>
+        <a href="cicd-folder.html" class="sidebar-link">The .cicd Folder</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Deep Dives</div>
+        <a href="architecture.html" class="sidebar-link active">Architecture</a>
+        <a href="cli-reference.html" class="sidebar-link">CLI Reference</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Support</div>
+        <a href="troubleshooting.html" class="sidebar-link">Troubleshooting & FAQ</a>
+      </div>
+    </aside>
+
+    <!-- Overlay for mobile sidebar -->
+    <div id="sidebar-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:150;display:none;"></div>
+
+    <!-- Main Content -->
+    <main class="docs-content">
+      <span class="badge badge-cyan">Page 3 of 5</span>
+      <h1>Architecture Deep Dive</h1>
+      <p>Understand how the inner components of CICD connect, secure, run, and monitor your deployments.</p>
+
+      <!-- ─── Overview Diagram ─── -->
+      <h2 id="overview">Under the Hood</h2>
+      <p>CICD operates as a single, lightweight orchestrator. It manages the entire process from accepting incoming git push webhooks to downloading dependencies, building, sandboxing, and tailing logs of multiple applications.</p>
+      
+      <div style="margin: 2rem 0; text-align: center;">
+        <img src="assets/architecture.png" alt="CICD Architecture Pipeline" style="border-radius: var(--radius-md); border: 1px solid var(--border); max-width: 100%; box-shadow: 0 0 40px rgba(0,0,0,0.4);">
+        <p class="text-muted" style="font-size:0.75rem; margin-top:0.5rem;">Visual flow of the CICD Deployment Pipeline</p>
+      </div>
+
+      <!-- ─── Webhook Pipeline ─── -->
+      <h2 id="pipeline">1. The Deployment Pipeline</h2>
+      <p>Every time a commit is pushed to your Git repository, the following step-by-step pipeline executes automatically:</p>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h4>Webhook POST & Security Handshake</h4>
+          <p>Your Git host (GitHub/GitLab) sends a JSON POST payload to the orchestrator listening port (default: <code>9641</code>). If a <code>--webhook-secret</code> was set, CICD verifies the payload authenticity using the <code>X-Hub-Signature-256</code> header and a local HMAC-SHA256 handshake. Unauthorized requests are instantly rejected.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h4>Project Mapping & Branch Filter</h4>
+          <p>CICD looks up the project in its local SQLite database (located at the hardcoded path <code>/etc/cicd/data/cicd.db</code>) using the incoming repository URL. If found, it validates the payload branch against the configured branch (e.g., <code>refs/heads/main</code>). Mismatched branches are safely ignored.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h4>Pin Check Bypass</h4>
+          <p>If the project has been "pinned" to a specific commit (using the dashboard or <code>cicd pin</code>), CICD records the new commit in the database history but <strong>skips</strong> starting the build pipeline to protect your active environment.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>
+          <h4>Queue Enqueueing (First-In, Single-Active)</h4>
+          <p>To avoid race conditions and CPU thrashing, CICD has a <strong>per-project deployment queue</strong>. If a deployment is already running for a project, the new deployment is placed in a single-slot buffer. If multiple new commits arrive while a build is running, intermediate commits are discarded and only the <strong>latest commit</strong> wins.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div>
+          <h4>Sync Repository (Safe Pull)</h4>
+          <p>CICD changes directory to the project's sandboxed path, resets tracked changes to HEAD to clear any local modifications, fetches the latest commits, and resets hard to the origin branch tip.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div>
+          <h4>Install & Download Phase</h4>
+          <p>If <code>.cicd/install.sh</code> exists, the orchestrator checks its SHA256 hash. If it matches the previously run hash, it is skipped. If not, it grants temporary, limited NOPASSWD sudo access to the service user, executes the install script with a timeout (default 30 min), and updates the cached hash.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">7</div>
+        <div>
+          <h4>Run & Compilation Phase</h4>
+          <p>CICD detects if any pre-existing process is listening on your application's port and kills it to prevent port binding collisions. It then starts the application via <code>.cicd/run.sh</code> under the sandboxed service user context. The compilation/build steps (like <code>npm run build</code> or <code>go build</code>) run inside this phase, ensuring new code gets built on every webhook pull.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">8</div>
+        <div>
+          <h4>Post-Deploy Health Check & Auto-Rollback</h4>
+          <p>CICD waits for 15 seconds to let the application stabilize. It then executes <code>.cicd/health.sh</code> (or verifies the PID/restarts if no script is present). If the check passes, the deployment is marked success. If it fails, CICD automatically rolls back the environment to the previous stable commit.</p>
+        </div>
+      </div>
+
+      <!-- ─── Security Model ─── -->
+      <h2 id="security">2. Security & Privilege Sandboxing</h2>
+      <div class="callout callout-danger">
+        <div class="callout-title">🔒 Production Security Sandboxing</div>
+        <p>CICD never runs your application code as root. Running untrusted web hooks as root opens severe remote code execution (RCE) vectors.</p>
+      </div>
+      <p>To keep your VPS safe, CICD implements a strict privilege-dropping system model:</p>
+      <ul>
+        <li><strong>Unique Service Accounts:</strong> When a project is created, CICD automatically provisions a dedicated system user (e.g. <code>cicd_usr_my-api-a1b2c3</code>) with no shell access.</li>
+        <li><strong>Privilege Dropping (setuid/setgid):</strong> The background Go process launcher drops system privileges to the service account UID/GID before starting <code>run.sh</code>.</li>
+        <li><strong>Temporary Build Escalation:</strong> During <code>install.sh</code>, if sudo commands are needed, a secure <code>SUDO_ASKPASS</code> JIT setup grants NOPASSWD access strictly for the duration of the installation phase, and tears it down immediately after.</li>
+        <li><strong>Owner Lock:</strong> The orchestrator recursively aligns file permissions (including <code>.git/</code>, lockfiles, and `app.pid`) to the project's sandboxed user to prevent permission escalation or file access collision.</li>
+      </ul>
+
+      <!-- ─── Telemetry & Streams ─── -->
+      <h2 id="telemetry">3. Real-Time Telemetry & Watchdogs</h2>
+      <p>Observability in the Command Center is powered by real-time streams:</p>
+      <ul>
+        <li><strong>SSE Event Streams:</strong> The dashboard doesn't pull or poll. It opens a Server-Sent Events (SSE) stream to <code>/api/stream/fleet</code>. The server broadcasts JSON status payloads containing real-time CPU/Memory usage, active listening ports, and system uptimes every 3 seconds.</li>
+        <li><strong>Active Watching:</strong> If the application runs in background mode (like PM2 or Tmux), the Go process engine tails the PID written to <code>$CICD_PID_FILE</code>.</li>
+        <li><strong>health.sh Watchdog Loop:</strong> For Tier 4 (external/Docker daemon) applications where no static PID can be tracked, CICD runs a persistent 30-second background watchdog loop running <code>.cicd/health.sh</code>. If it exits non-zero, it transitions SQLite status to failed and starts crash backoff recovery.</li>
+      </ul>
+
+      <!-- ─── Fleet Sync ─── -->
+      <h2 id="sync">4. Fleet Sync via MongoDB Atlas</h2>
+      <p>Managing multiple VPS servers? Simply configure a shared MongoDB Atlas connection string:</p>
+      <ul>
+        <li><strong>Unified State:</strong> Each node logs its active state, deployments, and stats to a centralized MongoDB collection.</li>
+        <li><strong>Multi-Server Dashboard:</strong> The Command Center dashboard connects to this shared registry, showing the health and active commit of your entire VPS fleet in one single interface.</li>
+      </ul>
+
+      <div style="display:flex;justify-content:space-between;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);">
+        <a href="cicd-folder.html" class="btn btn-outline" style="font-size:0.8rem;">← The .cicd Folder</a>
+        <a href="cli-reference.html" class="btn btn-primary" style="font-size:0.8rem;">Next: CLI Reference →</a>
+      </div>
+    </main>
+  </div>
+
+  <footer class="footer"><div class="container"><p><span style="color:var(--sakura);">🌸</span> CICD — <a href="https://github.com/KTBsomen/cicd">GitHub</a> | MIT License</p></div></footer>
+  <script src="js/scroll.js"></script>
+  <script src="js/nav.js"></script>
+</body>
+</html>

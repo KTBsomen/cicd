@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CICD — Documentation Hub</title>
+  <meta name="description" content="Complete documentation for the CICD deployment tool. Quick start, configuration, architecture, CLI reference.">
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/docs.css">
+  <style>
+    .docs-hub { padding: 6rem 0 4rem; }
+    .docs-hero { text-align: center; margin-bottom: 3rem; }
+    .docs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+    .doc-card { padding: 2rem; text-decoration: none; display: block; }
+    .doc-card:hover { border-color: var(--sakura); }
+    .doc-card .doc-num { font-size: 3rem; font-weight: 900; color: var(--sakura); opacity: 0.3; line-height: 1; }
+    .doc-card h3 { margin: 0.75rem 0 0.5rem; font-size: 1.3rem; }
+    .doc-card p { font-size: 0.9rem; color: var(--text-secondary); }
+    .doc-card .doc-link { color: var(--cyan); font-size: 0.85rem; font-weight: 600; margin-top: 1rem; display: inline-block; }
+  </style>
+</head>
+<body>
+  <!-- ═══ NAVIGATION ═══ -->
+  <nav class="nav scrolled">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-logo"><span class="sakura-icon">🌸</span> CICD</a>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="docs-hub">
+    <div class="container">
+      <div class="docs-hero">
+        <span class="badge badge-sakura">Documentation</span>
+        <h1 style="margin-top:1rem;">Learn CICD</h1>
+        <p class="mx-auto text-center" style="margin-top:0.5rem;">
+          Everything you need to deploy, monitor, and manage your applications with CICD.
+        </p>
+      </div>
+
+      <div class="docs-grid">
+        <a href="quickstart.html" class="glass doc-card">
+          <div class="doc-num">01</div>
+          <h3>Quick Start</h3>
+          <p>Get up and running in under 2 minutes. Learn to run the binary, manage projects via CLI or dashboard, and open firewall rules for AWS, DigitalOcean, and other providers.</p>
+          <span class="doc-link">Read Guide →</span>
+        </a>
+
+        <a href="cicd-folder.html" class="glass doc-card">
+          <div class="doc-num">02</div>
+          <h3>The .cicd Folder</h3>
+          <p>Learn how to write <code>install.sh</code>, <code>run.sh</code>, and <code>health.sh</code>. Multiple examples for Node.js, Python, Go, Rust, PM2, tmux, and Docker, with best practices on build placement.</p>
+          <span class="doc-link">Read Guide →</span>
+        </a>
+
+        <a href="architecture.html" class="glass doc-card">
+          <div class="doc-num">03</div>
+          <h3>Architecture Deep Dive</h3>
+          <p>Understand the orchestrator pipeline, setuid/setgid privilege sandboxing, safe git sync locks, SQLite database states, SSE metrics streaming, and MongoDB fleet synchronization.</p>
+          <span class="doc-link">Read Guide →</span>
+        </a>
+
+        <a href="cli-reference.html" class="glass doc-card">
+          <div class="doc-num">04</div>
+          <h3>CLI & Flags Reference</h3>
+          <p>Complete reference index for terminal commands (<code>cicd list</code>, <code>cicd rollback</code>, <code>cicd doctor</code>, etc.) and orchestrator configuration flags.</p>
+          <span class="doc-link">Read Guide →</span>
+        </a>
+
+        <a href="troubleshooting.html" class="glass doc-card">
+          <div class="doc-num">05</div>
+          <h3>Troubleshooting & FAQ</h3>
+          <p>Guides for permission errors, PM2 root issues, missing SMTP email logins, onboarding token lookups, WSL app.pid conflicts, and commonly asked questions.</p>
+          <span class="doc-link">Read Guide →</span>
+        </a>
+
+        <a href="index.html#generator" class="glass doc-card">
+          <div class="doc-num">⚡</div>
+          <h3>Command Generator</h3>
+          <p>Interactive form that generates your exact setup command. Fill in your repo URL, email, and options — get a copy-paste-ready command for your server.</p>
+          <span class="doc-link">Open Generator →</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <p><span style="color:var(--sakura);">🌸</span> CICD — <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a> | MIT License</p>
+    </div>
+  </footer>
+
+  <script src="js/scroll.js"></script>
+</body>
+</html>

@@ -36,9 +36,6 @@ import (
 //go:embed dashboard.html
 var dashboardHTML []byte
 
-//go:embed index.html
-var indexHTML []byte
-
 // jwtSecret is loaded from DB or env at startup (IF-2)
 var jwtSecret []byte
 
@@ -61,10 +58,10 @@ func StartUnifiedServer(cfg *parser.Config) {
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE"},
 	}))
 
-	// 0. HEALTH CHECK & PORTAL LANDING PAGE
+	// 0. HEALTH CHECK
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set("Content-Type", "text/html")
-		return c.Send(indexHTML)
+		return c.Send([]byte("CICD Unified Gateway is LIVE!\n\nAccess the Dashboard at: <a href='/dashboard'>/dashboard</a>"))
 	})
 
 	// --- 1. WEBHOOK ROUTE ---

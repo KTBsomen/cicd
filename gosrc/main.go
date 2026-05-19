@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 )
@@ -68,7 +69,14 @@ func main() {
 		serviceError := actions.CreateServicefile(&config, newPath)
 		if serviceError != nil {
 			logger.Error("Cant write service files", &config)
-			os.Exit(1)
+			if runtime.GOOS == "windows" {
+				//handle windows
+				//dont exit
+				fmt.Println("⚠️  Service file creation skipped for Windows. Run 'cicd start' to start the service.")
+				return
+			} else {
+				os.Exit(1)
+			}
 		}
 		logger.Info("✅ Service file created. Now starting it...", &config)
 		if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {

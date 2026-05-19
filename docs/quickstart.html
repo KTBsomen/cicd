@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quick Start — CICD Documentation</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/docs.css">
+</head>
+<body>
+  <!-- ═══ NAVIGATION ═══ -->
+  <nav class="nav scrolled">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-logo"><span class="sakura-icon">🌸</span> CICD</a>
+      <div style="display: flex; gap: 1.5rem; align-items: center;">
+        <button id="sidebar-toggle" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;display:none;" class="show-mobile">☰</button>
+        <div class="nav-links hide-mobile">
+          <a href="index.html">Home</a>
+          <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="docs-layout">
+    <!-- Left Sidebar -->
+    <aside class="docs-sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">Getting Started</div>
+        <a href="quickstart.html" class="sidebar-link active">Quick Start</a>
+        <a href="cicd-folder.html" class="sidebar-link">The .cicd Folder</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Deep Dives</div>
+        <a href="architecture.html" class="sidebar-link">Architecture</a>
+        <a href="cli-reference.html" class="sidebar-link">CLI Reference</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Support</div>
+        <a href="troubleshooting.html" class="sidebar-link">Troubleshooting & FAQ</a>
+      </div>
+    </aside>
+
+    <!-- Overlay for mobile sidebar -->
+    <div id="sidebar-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:150;display:none;"></div>
+
+    <!-- Main Content -->
+    <main class="docs-content">
+      <span class="badge badge-sakura">Page 1 of 5</span>
+      <h1>Quick Start</h1>
+      <p>Deploy and monitor multiple applications on your VPS. CICD is a single, zero-dependency binary that manages your entire server fleet.</p>
+
+      <!-- ─── Zero Config Mode ─── -->
+      <h2 id="zero-config">Zero-Flag Core Execution</h2>
+      <p>To run CICD, <strong>no flags are required at all</strong>. Running the binary directly sets up the internal database, auto-detects your VPS public IP, starts the webhook server on port <code>9641</code>, and activates the web dashboard.</p>
+      <pre><code>sudo ./cicd</code></pre>
+      <div class="callout callout-info">
+        <div class="callout-title">ℹ️ Core Automatic Setup</div>
+        <p>On startup with no arguments, CICD:
+          <br>1. Auto-detects your server public IP using <code>api.ipify.org</code>.
+          <br>2. Initializes the SQLite database at the hardcoded path <code>/etc/cicd/data/cicd.db</code>.
+          <br>3. Configures port <code>9641</code> as the default listener.
+          <br>4. Exposes the Command Center dashboard at <code>/dashboard</code>.
+        </p>
+      </div>
+
+      <!-- ─── Prerequisites ─── -->
+      <h2 id="prerequisites">Prerequisites</h2>
+      <ul>
+        <li><strong>OS:</strong> Any Linux environment (Ubuntu 20+, Debian 11+, CentOS, RHEL, or WSL).</li>
+        <li><strong>Access:</strong> Root or sudo privileges (required for sandboxing and port binding).</li>
+        <li><strong>Firewall:</strong> Open the listener port (default: <code>9641</code>).</li>
+        <li><strong>Git:</strong> Installed on the server (CICD auto-installs it if missing).</li>
+        <li><strong>Codebase:</strong> Your repository must contain a <code>.cicd/</code> folder with at least a <code>run.sh</code> file.</li>
+      </ul>
+
+      <!-- ─── Installation ─── -->
+      <h2 id="install">Installation & Deployment</h2>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h4>Download and Install</h4>
+          <p>Run the universal shell installer. It auto-detects your operating system (Linux, macOS) and hardware architecture (Intel/AMD x86, ARM64, 386) to fetch the correct binary:</p>
+          <pre><code># Install via Curl:
+curl -fsSL https://cicd.rf.gd/install.sh | sh
+
+# Or install via Wget:
+wget -qO- https://cicd.rf.gd/install.sh | sh</code></pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h4>Start the Core Daemon</h4>
+          <p>Run the core binary with zero flags. This registers the background systemd daemon, reads configuration, and hosts the Command Center dashboard:</p>
+          <pre><code>sudo ./cicd</code></pre>
+          <p style="font-size:0.85rem;">Look at the terminal output to copy your <strong>setup token</strong> and the dashboard link:</p>
+
+          <div class="terminal-mock">
+            <div class="terminal-header">
+              <span class="terminal-dot red"></span>
+              <span class="terminal-dot yellow"></span>
+              <span class="terminal-dot green"></span>
+              <span class="terminal-title">Terminal — Initial Setup Output</span>
+            </div>
+            <pre class="terminal-body"><code>======================================================================
+ 🖥️  STEP 1: ACCESS YOUR ADMIN DASHBOARD
+======================================================================
+  1. Open your browser and navigate to the Dashboard URL.
+  2. Copy and paste the Setup Token below to log in (expires in 15m).
+  3. In the login page you have to click `USE SETUP TOKEN` button and paste the token.
+
+╭──────────────────┬───────────────────────────────────╮
+│ 🌐 Dashboard URL │ http://127.0.0.1:9641/dashboard   │
+│ 🔑 Setup Token   │ Failed to load active setup token │
+╰──────────────────┴───────────────────────────────────╯
+
+======================================================================
+ 🛰️  STEP 2: CONNECT GITHUB (WEBHOOK SETUP)
+======================================================================
+  1. Go to your GitHub repository -> Settings -> Webhooks -> Add Webhook.
+  2. Set Payload URL, select 'application/json', and paste the Secret key.
+
+╭───────────────────┬──────────────────────────────────╮
+│ 🔌 Payload URL    │ http://127.0.0.1:9641/           │
+│ ⚙️  Content Type  │ application/json                 │
+│ 🔒 Secret Key     │ d6016594455bca3c20fdf3e7d8486931 │
+╰───────────────────┴──────────────────────────────────╯
+
+======================================================================
+ 🎥 STEP 3: NEED HELP? WATCH VIDEO GUIDE
+======================================================================
+  Watch the latest YouTube guide on configuring GitHub webhooks:
+  https://www.youtube.com/watch?v=MyEkKp3VRwo
+======================================================================
+⚙️  SYSTEMD SERVICE MANAGEMENT:
+  - To view gateway info:            cicd info
+  - To monitor live background logs:  cicd log -f
+  - To check systemd service status:  cicd status
+  - To view list of active services:  cicd ls
+  - To view all commands:             cicd commands</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h4>Register Your Projects</h4>
+          <p>Once started, there are two simple ways to add projects to the fleet:</p>
+          <ul>
+            <li><strong>Web Dashboard (Recommended):</strong> Log in to the dashboard at <code>http://YOUR-SERVER-IP:9641/dashboard</code> using your setup token, click <strong>"New Project"</strong>, and enter your repository details visually.</li>
+            <li><strong>Command Line:</strong> If you prefer CLI setup, use the <a href="index.html#generator">Interactive Command Builder</a> on the homepage to generate a custom startup command containing all your configurations (such as SMTP credentials for email alerts, webhook secrets, and custom branch rules).</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>
+          <h4>Connect GitHub Webhooks</h4>
+          <p>Add a Webhook to your GitHub repository under <strong>Settings → Webhooks → Add Webhook</strong>:</p>
+          <table>
+            <tr><th>Field</th><th>Value</th></tr>
+            <tr><td>Payload URL</td><td><code>http://YOUR-SERVER-IP:9641/</code></td></tr>
+            <tr><td>Content type</td><td><code>application/json</code></td></tr>
+            <tr><td>Secret</td><td>Your <code>--webhook-secret</code> (find it anytime with <code>cicd info</code>)</td></tr>
+            <tr><td>Events</td><td>Just the push event</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- ─── Local overrides ─── -->
+      <h2 id="overrides">Override Configurations</h2>
+      <p>CLI flags are used to overwrite default settings. For example, if you are testing locally or behind a proxy and want to bypass the public IP auto-lookup:</p>
+      <pre><code>sudo ./cicd --public-ip 127.0.0.1</code></pre>
+
+      <!-- ─── Cloud Guides ─── -->
+      <h2 id="cloud-providers">Cloud Provider Firewall Rules</h2>
+      <p>Make sure to allow inbound traffic on port <code>9641</code>:</p>
+      <ul>
+        <li><strong>AWS EC2:</strong> In your Security Group, add an Inbound Rule for <strong>Custom TCP</strong> on port <code>9641</code> from source <code>0.0.0.0/0</code>.</li>
+        <li><strong>DigitalOcean:</strong> In Networking → Firewalls, add an inbound rule for TCP port <code>9641</code>.</li>
+        <li><strong>Azure VM:</strong> Add an Inbound Security Rule in the Network Security Group for TCP port <code>9641</code>.</li>
+        <li><strong>Any Linux VPS (UFW):</strong> Open the port using <code>sudo ufw allow 9641/tcp</code>.</li>
+      </ul>
+
+      <div style="display:flex;justify-content:space-between;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);">
+        <a href="docs.html" class="btn btn-outline" style="font-size:0.8rem;">← All Docs</a>
+        <a href="cicd-folder.html" class="btn btn-primary" style="font-size:0.8rem;">Next: The .cicd Folder →</a>
+      </div>
+    </main>
+  </div>
+
+  <footer class="footer"><div class="container"><p><span style="color:var(--sakura);">🌸</span> CICD — <a href="https://github.com/KTBsomen/cicd">GitHub</a> | MIT License</p></div></footer>
+  <script src="js/scroll.js"></script>
+  <script src="js/nav.js"></script>
+</body>
+</html>

@@ -3,3 +3,5 @@
 .env
 gosrc/main
 gosrc/gosrc
+pythonsrc/
+dist/

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Troubleshooting & FAQ — CICD Documentation</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/docs.css">
+</head>
+<body>
+  <!-- ═══ NAVIGATION ═══ -->
+  <nav class="nav scrolled">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-logo"><span class="sakura-icon">🌸</span> CICD</a>
+      <div style="display: flex; gap: 1.5rem; align-items: center;">
+        <button id="sidebar-toggle" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;display:none;" class="show-mobile">☰</button>
+        <div class="nav-links hide-mobile">
+          <a href="index.html">Home</a>
+          <a href="https://github.com/KTBsomen/cicd" target="_blank">GitHub</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="docs-layout">
+    <!-- Left Sidebar -->
+    <aside class="docs-sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">Getting Started</div>
+        <a href="quickstart.html" class="sidebar-link">Quick Start</a>
+        <a href="cicd-folder.html" class="sidebar-link">The .cicd Folder</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Deep Dives</div>
+        <a href="architecture.html" class="sidebar-link">Architecture</a>
+        <a href="cli-reference.html" class="sidebar-link">CLI Reference</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Support</div>
+        <a href="troubleshooting.html" class="sidebar-link active">Troubleshooting & FAQ</a>
+      </div>
+    </aside>
+
+    <!-- Overlay for mobile sidebar -->
+    <div id="sidebar-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:150;display:none;"></div>
+
+    <!-- Main Content -->
+    <main class="docs-content">
+      <span class="badge badge-cyan">Page 5 of 5</span>
+      <h1>Troubleshooting & FAQ</h1>
+      <p>Find solutions for common installation errors, script failures, permission problems, and architectural edge cases.</p>
+
+      <!-- ─── Troubleshooting Common Issues ─── -->
+      <h2 id="common-errors">Common Issues & Solutions</h2>
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h4>Permission Denied / EACCES Errors</h4>
+          <p><strong>Symptom:</strong> Build logs show failures like <code>npm error EACCES: permission denied, open 'package-lock.json'</code>, or <code>Permission denied to write to .cicdlog/app.pid</code>.</p>
+          <p><strong>Cause:</strong> The codebase directory or logs folder belongs to a different user, or the deployment was run with root but the application is dropping privileges to the sandboxed service account user.</p>
+          <p><strong>Solution:</strong> CICD has a built-in recursive ownership alignment mechanism. It forces all repository and configuration files to belong to the service account. If things are stuck, trigger a clean reinstall using the CLI:</p>
+          <pre><code>cicd reinstall &lt;service-name&gt;</code></pre>
+          <p style="font-size:0.85rem;">This wipes the system caching, resets file ownership recursively, resets permissions, and restarts from scratch.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h4>PM2 Deployments Get User 'root'</h4>
+          <p><strong>Symptom:</strong> You run PM2 in <code>run.sh</code>, but PM2 processes are registered under the root user instead of the sandboxed service user.</p>
+          <p><strong>Cause:</strong> PM2 stores configuration inside the home folder (<code>~/.pm2</code>). If the <code>HOME</code> and <code>USER</code> environment variables are not dropped correctly by the runner, PM2 defaults to root's directory.</p>
+          <p><strong>Solution:</strong> CICD dynamically overrides <code>HOME</code>, <code>USER</code>, and utilizes credential drops during daemon fork execution. In your <code>run.sh</code>, make sure you write the PM2 PID into <code>$CICD_PID_FILE</code>:</p>
+          <pre><code># Inside .cicd/run.sh
+pm2 delete "$CICD_SERVICE_NAME" 2>/dev/null || true
+pm2 start index.js --name "$CICD_SERVICE_NAME"
+pm2 pid "$CICD_SERVICE_NAME" > "$CICD_PID_FILE"</code></pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h4>Webhook Triggers but Nothing Deploys</h4>
+          <p><strong>Symptom:</strong> Git push is made, GitHub webhook status returns success (200 OK), but the server shows no deployment logs.</p>
+          <p><strong>Cause:</strong> The commit was pushed to a branch other than the one configured (e.g. pushed to <code>develop</code> while CICD monitors <code>main</code>), or the service is <strong>pinned</strong> to an active commit.</p>
+          <p><strong>Solution:</strong> Check the orchestrator dashboard or list services with <code>cicd list</code> to check if the project is pinned. Unpin with:</p>
+          <pre><code>cicd unpin &lt;service-name&gt;</code></pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>
+          <h4>No Magic Link Emails Arrive</h4>
+          <p><strong>Symptom:</strong> You set an admin email, but you do not receive magic link emails to log in to the dashboard.</p>
+          <p><strong>Cause:</strong> Passing <code>--admin-email</code> requires active SMTP credentials flags (<code>--smtp-host</code>, <code>--smtp-port</code>, <code>--smtp-user</code>, <code>--smtp-pass</code>). Without them, the server cannot transmit emails.</p>
+          <p><strong>Solution:</strong> If you do not want to configure SMTP, you can retrieve the login token directly from the server CLI. Run:</p>
+          <pre><code>cicd token</code></pre>
+          <p>If you want to force regenerate a new secure onboarding token, run:</p>
+          <pre><code>cicd token --force</code></pre>
+          <p>Alternatively, print full configuration parameters and links with <code>cicd info</code>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">5</div>
+        <div>
+          <h4>WSL Errors: Permission denied to app.pid</h4>
+          <p><strong>Symptom:</strong> On WSL (Windows Subsystem for Linux), deployments fail on launch showing permission denied on the app.pid file.</p>
+          <p><strong>Cause:</strong> WSL handles file permissions and user mapping differently from native Linux. Ownership synchronization during startup can cause a race condition.</p>
+          <p><strong>Solution:</strong> Ensure your WSL user is added to the <code>sudoers</code> list, or run the orchestrator with <code>--public-ip 127.0.0.1</code> to test locally without daemon privileges.</p>
+        </div>
+      </div>
+
+      <!-- ─── FAQ ─── -->
+      <h2 id="faq" style="margin-top:3rem;">Frequently Asked Questions</h2>
+
+      <div class="faq-item">
+        <div class="faq-q">Can I deploy multiple apps on one VPS? <span class="arrow">▼</span></div>
+        <div class="faq-a">
+          <div class="faq-a-inner">
+            <strong>Yes.</strong> The orchestrator is always running in multi-project mode. You can register projects by passing their details via CLI flags (e.g. running <code>sudo ./cicd --repo-url ...</code> for each repository) or by clicking "New Project" in the web dashboard UI at port <code>9641</code>.
+          </div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">Where is the SQLite database stored? <span class="arrow">▼</span></div>
+        <div class="faq-a">
+          <div class="faq-a-inner">
+            To ensure persistence regardless of which system user executes commands, the database is stored at the hardcoded path:
+            <pre style="margin-top:0.5rem; margin-bottom:0.5rem;"><code>/etc/cicd/data/cicd.db</code></pre>
+            This path is protected and owned by the root account.
+          </div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">How does the auto-rollback work? <span class="arrow">▼</span></div>
+        <div class="faq-a">
+          <div class="faq-a-inner">
+            When a deployment completes, CICD starts a 15-second stabilization timer. It then runs <code>.cicd/health.sh</code> (or tests the process port and restarts). If the app crashes or fails the check, CICD marks the deploy as failed, looks up the last successful commit in SQLite, and performs an automatic rollback deployment.
+          </div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">How do I access logs for my app? <span class="arrow">▼</span></div>
+        <div class="faq-a">
+          <div class="faq-a-inner">
+            You can tail live deployment logs using the CLI:
+            <pre style="margin-top:0.5rem; margin-bottom:0.5rem;"><code>cicd log &lt;service-name&gt;</code></pre>
+            Global system orchestration logs can be checked with:
+            <pre style="margin-top:0.5rem; margin-bottom:0.5rem;"><code>cicd log</code></pre>
+            Alternatively, you can view, search, and download full historical logs directly inside the project cards on the web dashboard.
+          </div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">How do I update the CICD binary? <span class="arrow">▼</span></div>
+        <div class="faq-a">
+          <div class="faq-a-inner">
+            To update the orchestrator daemon to the latest release, run the universal script:
+            <pre style="margin-top:0.5rem; margin-bottom:0.5rem;"><code>curl -fsSL https://cicd.rf.gd/install.sh | sh
+cicd restart</code></pre>
+            The background systemd service will reload and apply the update without interrupting your running applications.
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);">
+        <a href="cli-reference.html" class="btn btn-outline" style="font-size:0.8rem;">← CLI Reference</a>
+        <a href="docs.html" class="btn btn-primary" style="font-size:0.8rem;">All Documentation Hub</a>
+      </div>
+    </main>
+  </div>
+
+  <footer class="footer"><div class="container"><p><span style="color:var(--sakura);">🌸</span> CICD — <a href="https://github.com/KTBsomen/cicd">GitHub</a> | MIT License</p></div></footer>
+  <script src="js/scroll.js"></script>
+  <script src="js/nav.js"></script>
+</body>
+</html>
