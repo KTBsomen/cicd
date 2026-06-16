@@ -493,6 +493,38 @@ func GetProjectByRepoURL(repoURL string) (*Project, error) {
 	return &p, nil
 }
 
+// GetProjectsByRepoURL returns ALL local projects registered under the given repo URL.
+// A single repo can have multiple projects (e.g. different branches or service names).
+func GetProjectsByRepoURL(repoURL string) ([]Project, error) {
+	rows, err := DB.Query(`
+		SELECT id, serviceName, serviceUser, repoURL, branch, publicIp, webhook, adminEmail, serviceDir, user, githubToken, githubUsername,
+		COALESCE(sudoPass,''), COALESCE(webhookSecret,''), COALESCE(mongodb_uri,''),
+		COALESCE(is_pinned,0), COALESCE(deploy_status,'idle'),
+		COALESCE(lastCommitHash,''), COALESCE(lastCommitMsg,'')
+		FROM users WHERE repoURL = ?`, repoURL)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []Project
+	for rows.Next() {
+		var p Project
+		var pinned int
+		err := rows.Scan(
+			&p.ID, &p.ServiceName, &p.ServiceUser, &p.RepoURL, &p.Branch, &p.PublicIp, &p.Webhook, &p.AdminEmail, &p.ServiceDir, &p.User, &p.GithubToken, &p.GithubUsername,
+			&p.SudoPass, &p.WebhookSecret, &p.MongoDBURI,
+			&pinned, &p.DeployStatus, &p.LastCommitHash, &p.LastCommitMsg,
+		)
+		if err != nil {
+			continue
+		}
+		p.IsPinned = pinned != 0
+		projects = append(projects, p)
+	}
+	return projects, nil
+}
+
 func GetProjectByName(name string) (*Project, error) {
 	var p Project
 	var pinned int

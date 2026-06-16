@@ -122,8 +122,10 @@ func StartUnifiedServer(cfg *parser.Config) {
 		// AddCommitToHistory is called inside FullDeployPipeline — do NOT call it here too.
 		database.UpdateLastCommitInfo(dbProject.ServiceDir, data.Hash, data.CommitMsg)
 		if projectCfg.MongoDBURI == "" {
+			// No MongoDB: deploy directly from the webhook on this node
 			actions.EnqueueDeployment(projectCfg, data.Hash, data.CommitMsg, actions.FullDeployPipeline)
 		}
+		// MongoDB configured: write commit to MongoDB → change stream fires on ALL fleet nodes → each node deploys
 		go database.UpdateCommitHash(projectCfg, data.Hash)
 
 		logger.Info(fmt.Sprintf("🚀 WEBHOOK TRIGGERED: %s (Commit: %s)", projectCfg.ServiceName, data.Hash[:8]), projectCfg)

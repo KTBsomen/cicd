@@ -188,10 +188,22 @@ func startWatchLoop(cfg *parser.Config, callback func(*parser.Config)) error {
 	ctx := context.Background()
 	collection := client.Database("cicd").Collection("projects")
 
-	// We only want to watch changes for THIS server
-	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: bson.M{"fullDocument.repo_url": cfg.RepoURL}}},
+	// Build the pipeline filter from repo URLs registered on THIS node in local SQLite.
+	// We only want change stream events for repos this node actually hosts —
+	// no need to wake up for other fleet nodes' repos.
+	var pipeline mongo.Pipeline
+	localRepoURLs := getLocalRepoURLs()
+	if len(localRepoURLs) > 0 {
+		pipeline = mongo.Pipeline{
+			{{Key: "$match", Value: bson.M{"fullDocument.repo_url": bson.M{"$in": localRepoURLs}}}},
+		}
+		logger.Info(fmt.Sprintf("📡 Change stream filtering for %d local repo(s)", len(localRepoURLs)), cfg)
+	} else {
+		// No projects registered yet — watch everything so the first push still works
+		pipeline = mongo.Pipeline{}
+		logger.Info("📡 Change stream watching all repos (no local projects registered yet)", cfg)
 	}
+
 	opts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
 	stream, err := collection.Watch(ctx, pipeline, opts)
 	if err != nil {
@@ -202,30 +214,33 @@ func startWatchLoop(cfg *parser.Config, callback func(*parser.Config)) error {
 	logger.Info("📡 MongoDB Change Stream active", cfg)
 	for stream.Next(ctx) {
 		var event bson.M
-		if err := stream.Decode(&event); err == nil {
-			fullDoc, ok := event["fullDocument"].(bson.M)
-			if !ok {
-				continue
-			}
-			projectName, ok := fullDoc["service_name"].(string)
-			if !ok {
-				continue
-			}
-			repoURL, ok := fullDoc["repo_url"].(string)
-			if !ok {
-				continue
-			}
-			project, err := GetProjectByRepoURL(repoURL)
-			if err != nil {
-				logger.Error("Project not found for repo: "+repoURL, cfg)
-				continue
-			}
+		if err := stream.Decode(&event); err != nil {
+			continue
+		}
+
+		fullDoc, ok := event["fullDocument"].(bson.M)
+		if !ok || fullDoc == nil {
+			continue
+		}
+
+		repoURL, ok := fullDoc["repo_url"].(string)
+		if !ok || repoURL == "" {
+			continue
+		}
+
+		// Deploy ALL local projects registered under this repo URL
+		projects, err := GetProjectsByRepoURL(repoURL)
+		if err != nil || len(projects) == 0 {
+			logger.Error("Change stream: no local projects found for repo: "+repoURL, cfg)
+			continue
+		}
+		for _, project := range projects {
 			appCfg, err := project.ToConfig()
 			if err != nil {
-				logger.Error("Failed to convert project to config: "+err.Error(), cfg)
+				logger.Error("Change stream: failed to build config for "+project.ServiceName+": "+err.Error(), cfg)
 				continue
 			}
-			logger.Info("🔔 Remote change detected for: "+projectName, appCfg)
+			logger.Info("🔔 Remote trigger → deploying: "+appCfg.ServiceName, appCfg)
 			callback(appCfg)
 		}
 	}
@@ -286,4 +301,26 @@ func DeleteProjectFromMongo(cfg *parser.Config) ([]string, error) {
 	}
 	logger.Info("🗑️  Project deleted from MongoDB", cfg)
 	return nil, nil
+}
+
+// getLocalRepoURLs returns all distinct repo URLs registered on this node from SQLite.
+// Used to build a targeted MongoDB change stream pipeline filter.
+func getLocalRepoURLs() []string {
+	if DB == nil {
+		return nil
+	}
+	rows, err := DB.Query(`SELECT DISTINCT repoURL FROM users WHERE repoURL != ''`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var urls []string
+	for rows.Next() {
+		var url string
+		if err := rows.Scan(&url); err == nil && url != "" {
+			urls = append(urls, url)
+		}
+	}
+	return urls
 }

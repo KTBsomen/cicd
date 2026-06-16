@@ -1,4 +1,3 @@
-bash
 #!/bin/bash
 
 # This script runs Node.js applications.
