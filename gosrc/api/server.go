@@ -124,9 +124,10 @@ func StartUnifiedServer(cfg *parser.Config) {
 		if projectCfg.MongoDBURI == "" {
 			// No MongoDB: deploy directly from the webhook on this node
 			actions.EnqueueDeployment(projectCfg, data.Hash, data.CommitMsg, actions.FullDeployPipeline)
+		} else {
+			// MongoDB configured: write commit to MongoDB → change stream fires on ALL fleet nodes → each node deploys
+			go database.UpdateCommitHash(projectCfg, data.Hash)
 		}
-		// MongoDB configured: write commit to MongoDB → change stream fires on ALL fleet nodes → each node deploys
-		go database.UpdateCommitHash(projectCfg, data.Hash)
 
 		logger.Info(fmt.Sprintf("🚀 WEBHOOK TRIGGERED: %s (Commit: %s)", projectCfg.ServiceName, data.Hash[:8]), projectCfg)
 		return c.SendString("Deployment initiated")

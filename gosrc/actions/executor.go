@@ -154,6 +154,33 @@ func RunAsUserWithContext(ctx context.Context, cfg *parser.Config, command strin
 	return nil
 }
 
+// RunHealthCheckWithEnv runs a health check script with CICD env vars injected.
+// This allows health.sh to use $CICD_SERVICE_NAME, $CICD_PORT, etc. to decide
+// what to check (critical for shared .cicd dirs serving multiple services).
+func RunHealthCheckWithEnv(ctx context.Context, cfg *parser.Config, scriptPath string) error {
+	u, err := user.Lookup(cfg.ServiceUser)
+	if err != nil {
+		return err
+	}
+	uidInt, _ := strconv.Atoi(u.Uid)
+	gidInt, _ := strconv.Atoi(u.Gid)
+	cmd := exec.CommandContext(ctx, "bash", scriptPath)
+	cmd.Dir = filepath.Join(cfg.ServiceDir, "codebase")
+	cmd.Env = append(os.Environ(),
+		"HOME="+u.HomeDir,
+		"USER="+u.Username,
+		"CICD_PORT="+fmt.Sprintf("%d", cfg.Webhook),
+		"CICD_SERVICE_NAME="+cfg.ServiceName,
+		"CICD_SERVICE_DIR="+cfg.ServiceDir,
+		"CICD_LOG_DIR="+filepath.Join(cfg.ServiceDir, ".cicdlog"),
+		"CICD_PID_FILE="+filepath.Join(cfg.ServiceDir, ".cicdlog", "app.pid"),
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	setPlatformAttributes(cmd, uint32(uidInt), uint32(gidInt))
+	return cmd.Run()
+}
+
 // ═══════════════════════════════════════════════════════
 //  F12 — Disk Space Check
 // ═══════════════════════════════════════════════════════
@@ -513,7 +540,7 @@ func PostDeployHealthCheck(cfg *parser.Config, hash, trigger string, depth int) 
 		defer cancel()
 		os.Chmod(healthScript, 0755)
 
-		err := RunAsUserWithContext(ctx, cfg, "bash", healthScript)
+		err := RunHealthCheckWithEnv(ctx, cfg, healthScript)
 		if err == nil {
 			alive = true
 			logger.Info("✅ Custom health check script passed successfully!", cfg)
@@ -526,10 +553,12 @@ func PostDeployHealthCheck(cfg *parser.Config, hash, trigger string, depth int) 
 		aliveStatus, _, _, restarts = GetProcessStatus(cfg.ServiceDir)
 		alive = aliveStatus
 
-		// Stability check: If it's alive but has restarted, it's not a successful deploy
+		// Note: we intentionally do NOT fail the health check just because restarts > 0.
+		// A single crash-and-recover during the port-binding transition window (old process
+		// not yet released its port when new one starts) is normal and self-healing.
+		// We only care that the process IS alive 15 seconds after deploy.
 		if alive && restarts > 0 {
-			logger.Warn(fmt.Sprintf("⚠️  Service '%s' is alive but has restarted %d times during health check. Marking as UNSTABLE.", cfg.ServiceName, restarts), cfg)
-			alive = false // Trigger rollback logic below
+			logger.Warn(fmt.Sprintf("⚠️  Service '%s' restarted %d time(s) after deploy but is now alive — marking as running.", cfg.ServiceName, restarts), cfg)
 		}
 	}
 

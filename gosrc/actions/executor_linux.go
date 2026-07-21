@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // setPlatformAttributes configures the command to run with specific UID/GID on Linux
@@ -39,13 +40,17 @@ func killProcessGroup(cmd *exec.Cmd) {
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err == nil {
 		syscall.Kill(-pgid, syscall.SIGTERM)
-		// Give processes 3 seconds to shut down gracefully
-		// then force kill if still alive
-		go func() {
-			<-make(chan struct{}) // We don't actually block here; SIGTERM should suffice
-		}()
+		// Wait up to 3 seconds for graceful shutdown before force-killing
+		for i := 0; i < 6; i++ {
+			time.Sleep(500 * time.Millisecond)
+			if !isProcessAlive(cmd.Process.Pid) {
+				return
+			}
+		}
+		// Force kill the entire process group
+		syscall.Kill(-pgid, syscall.SIGKILL)
 	}
-	// Also try SIGKILL as fallback
+	// Final fallback: kill the process directly
 	cmd.Process.Kill()
 }
 

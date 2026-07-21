@@ -6,6 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"crypto/sha256"
+	"encoding/hex"
+
 	"gosrc/logger"
 	"gosrc/parser"
 
@@ -23,6 +26,9 @@ var (
 	sharedMongoClient *mongo.Client
 	mongoMu           sync.Mutex
 	lastMongoURI      string
+
+	// Dedup guard: tracks recently processed repo+commit pairs to prevent duplicate deploys
+	recentDeploys   sync.Map // key: "repo_url:commit_hash" → value: time.Time
 )
 
 // getMongoClient returns a shared MongoDB client. Thread-safe.
@@ -195,9 +201,18 @@ func startWatchLoop(cfg *parser.Config, callback func(*parser.Config)) error {
 	localRepoURLs := getLocalRepoURLs()
 	if len(localRepoURLs) > 0 {
 		pipeline = mongo.Pipeline{
-			{{Key: "$match", Value: bson.M{"fullDocument.repo_url": bson.M{"$in": localRepoURLs}}}},
+			{{Key: "$match", Value: bson.M{
+				"fullDocument.repo_url": bson.M{"$in": localRepoURLs},
+				// Only fire on updates that actually change the commit_hash field.
+				// This prevents deploys from status/timestamp/ip writes.
+				"$or": bson.A{
+					bson.M{"operationType": "update", "updateDescription.updatedFields.commit_hash": bson.M{"$exists": true}},
+					bson.M{"operationType": "replace"},
+					bson.M{"operationType": "insert"},
+				},
+			}}},
 		}
-		logger.Info(fmt.Sprintf("📡 Change stream filtering for %d local repo(s)", len(localRepoURLs)), cfg)
+		logger.Info(fmt.Sprintf("📡 Change stream filtering for %d local repo(s), commit_hash changes only", len(localRepoURLs)), cfg)
 	} else {
 		// No projects registered yet — watch everything so the first push still works
 		pipeline = mongo.Pipeline{}
@@ -226,6 +241,22 @@ func startWatchLoop(cfg *parser.Config, callback func(*parser.Config)) error {
 		repoURL, ok := fullDoc["repo_url"].(string)
 		if !ok || repoURL == "" {
 			continue
+		}
+
+		// Extract the new commit_hash for deduplication
+		commitHash, _ := fullDoc["commit_hash"].(string)
+
+		// Dedup guard: skip if we processed this exact repo+hash recently
+		if commitHash != "" {
+			dedupKey := dedupHash(repoURL + ":" + commitHash)
+			if lastTime, loaded := recentDeploys.Load(dedupKey); loaded {
+				if time.Since(lastTime.(time.Time)) < 60*time.Second {
+					logger.Info(fmt.Sprintf("📡 Change stream: skipping duplicate event for %s (commit %s, processed %.0fs ago)",
+						repoURL, commitHash[:8], time.Since(lastTime.(time.Time)).Seconds()), cfg)
+					continue
+				}
+			}
+			recentDeploys.Store(dedupKey, time.Now())
 		}
 
 		// Deploy ALL local projects registered under this repo URL
@@ -323,4 +354,10 @@ func getLocalRepoURLs() []string {
 		}
 	}
 	return urls
+}
+
+// dedupHash creates a short hash key for the dedup map to avoid holding long strings in memory
+func dedupHash(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:8])
 }

@@ -73,8 +73,9 @@ func StartAppProcess(cfg *parser.Config) error {
 	runScript := filepath.Join(codebasePath, ".cicd", "run.sh")
 	pidPath := filepath.Join(cfg.ServiceDir, ".cicdlog", "app.pid")
 
-	// EC-6: Delete stale PID file before doing anything
-	os.Remove(pidPath)
+	// Read the old PID BEFORE deleting, so StopAppProcess and the
+	// port-release wait below can actually check if the old process is dead.
+	oldPID := readPIDFile(pidPath)
 
 	// Tier 4: No run.sh = install-only mode
 	if _, err := os.Stat(runScript); os.IsNotExist(err) {
@@ -84,18 +85,18 @@ func StartAppProcess(cfg *parser.Config) error {
 	}
 
 	// EC-1: Check if process is already alive via PID file (daemon restart case)
-	if existingPID := readPIDFile(pidPath); existingPID > 0 {
-		if isProcessAlive(existingPID) {
-			logger.Info(fmt.Sprintf("♻️  Re-adopting existing process PID %d (still alive from before restart)", existingPID), cfg)
+	if oldPID > 0 {
+		if isProcessAlive(oldPID) {
+			logger.Info(fmt.Sprintf("♻️  Re-adopting existing process PID %d (still alive from before restart)", oldPID), cfg)
 			proc := &ManagedProcess{
 				Config:    cfg,
 				StartTime: time.Now(),
 				Mode:      RunModeDelegating,
-				ExtPID:    existingPID,
+				ExtPID:    oldPID,
 			}
 			registry.Store(cfg.ServiceDir, proc)
 			// Write PID back (it was deleted above, but process is alive)
-			writePIDFile(pidPath, existingPID, cfg.ServiceUser)
+			writePIDFile(pidPath, oldPID, cfg.ServiceUser)
 			go watchSinglePID(proc)
 			return nil
 		}
@@ -104,6 +105,21 @@ func StartAppProcess(cfg *parser.Config) error {
 
 	// 1. Kill any existing instance of this service
 	StopAppProcess(cfg.ServiceDir)
+
+	// NOW remove the stale PID file after the process is stopped
+	os.Remove(pidPath)
+
+	// Wait up to 5 seconds for the old process to release its port before starting the new one.
+	// Without this wait, the new process tries to bind the same port while the old one is still
+	// in graceful shutdown → "address already in use" → crash → restart loop.
+	if oldPID > 0 {
+		for i := 0; i < 10; i++ {
+			time.Sleep(500 * time.Millisecond)
+			if !isProcessAlive(oldPID) {
+				break
+			}
+		}
+	}
 
 	// EC-5: Ensure the script is executable
 	os.Chmod(runScript, 0755)
@@ -235,11 +251,16 @@ func monitorProcess(p *ManagedProcess, logFile *os.File) {
 	pidPath := filepath.Join(p.Config.ServiceDir, ".cicdlog", "app.pid")
 
 	if exitCode != 0 {
-		// Non-zero exit = crash → restart with backoff
-		if _, ok := registry.Load(p.Config.ServiceDir); ok {
+		// Non-zero exit = crash → restart with backoff.
+		// IMPORTANT: verify we are still the CURRENT registered process.
+		// A new deploy may have already replaced us in the registry — in that
+		// case we must NOT restart, otherwise we'd kill the new deploy's process.
+		if isCurrentProcess(p) {
 			logger.Error(fmt.Sprintf("⚠️  Service '%s' crashed (exit code %d). Restarting with backoff...", p.Config.ServiceName, exitCode), p.Config)
 			Notify(p.Config, "⚠️ Service Crashed", fmt.Sprintf("Service '%s' exited unexpectedly with code %d. Attempting automated restart.", p.Config.ServiceName, exitCode))
 			restartWithBackoff(p)
+		} else {
+			logger.Info(fmt.Sprintf("🔄 Old watchdog for '%s' exiting — superseded by newer deploy", p.Config.ServiceName), p.Config)
 		}
 		return
 	}
@@ -252,7 +273,7 @@ func monitorProcess(p *ManagedProcess, logFile *os.File) {
 		pidStr := strings.TrimSpace(string(pidData))
 		if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
 			// Verify it's not the bash PID we wrote ourselves
-			if pid != pgid && isProcessAlive(pid) {
+			if pid != pgid && isProcessAlive(pid) && isCurrentProcess(p) {
 				p.Mode = RunModeDelegating
 				p.ExtPID = pid
 				registry.Store(p.Config.ServiceDir, p)
@@ -265,7 +286,7 @@ func monitorProcess(p *ManagedProcess, logFile *os.File) {
 
 	// TIER 2: Auto-detect background children still in our PGID
 	if pgid > 0 {
-		if children := getChildrenInGroup(pgid); len(children) > 0 {
+		if children := getChildrenInGroup(pgid); len(children) > 0 && isCurrentProcess(p) {
 			p.Mode = RunModeBackground
 			p.ProcessGroup = pgid
 			// Write the first child PID for CLI status
@@ -305,8 +326,8 @@ func watchSinglePID(p *ManagedProcess) {
 	for {
 		time.Sleep(30 * time.Second)
 
-		// Check if we were stopped intentionally
-		if _, ok := registry.Load(p.Config.ServiceDir); !ok {
+		// Exit if we are no longer the current process for this service
+		if !isCurrentProcess(p) {
 			return
 		}
 
@@ -329,8 +350,8 @@ func watchHealthScript(p *ManagedProcess, healthScript string) {
 	for {
 		time.Sleep(30 * time.Second)
 
-		// Check if we were stopped intentionally
-		if _, ok := registry.Load(p.Config.ServiceDir); !ok {
+		// Exit if we are no longer the current process for this service
+		if !isCurrentProcess(p) {
 			return
 		}
 
@@ -339,10 +360,10 @@ func watchHealthScript(p *ManagedProcess, healthScript string) {
 			p.RestartCount = 0
 		}
 
-		// Execute health script with 10-second timeout
+		// Execute health script with 10-second timeout, passing CICD env vars
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		os.Chmod(healthScript, 0755)
-		err := RunAsUserWithContext(ctx, p.Config, "bash", healthScript)
+		err := RunHealthCheckWithEnv(ctx, p.Config, healthScript)
 		cancel()
 
 		if err != nil {
@@ -364,7 +385,8 @@ func watchProcessGroup(p *ManagedProcess) {
 	for {
 		time.Sleep(30 * time.Second)
 
-		if _, ok := registry.Load(p.Config.ServiceDir); !ok {
+		// Exit if we are no longer the current process for this service
+		if !isCurrentProcess(p) {
 			return
 		}
 
@@ -390,7 +412,6 @@ func restartWithBackoff(p *ManagedProcess) {
 	if p.RestartCount > maxRestarts {
 		logger.Error(fmt.Sprintf("🔥 Max restarts (%d) exceeded for %s. Giving up. Manual intervention required.", maxRestarts, p.Config.ServiceName), p.Config)
 		Notify(p.Config, "🔥 Max Restarts Exceeded", fmt.Sprintf("Service '%s' has crashed too many times (%d). Automation has been suspended to prevent loops. Manual intervention required.", p.Config.ServiceName, maxRestarts))
-		registry.Delete(p.Config.ServiceDir)
 		return
 	}
 
@@ -404,9 +425,9 @@ func restartWithBackoff(p *ManagedProcess) {
 	logger.Warn(fmt.Sprintf("⏱️  Restart %d/%d for %s. Waiting %v...", p.RestartCount, maxRestarts, p.Config.ServiceName, delay), p.Config)
 	time.Sleep(delay)
 
-	// Re-check if we were stopped during the backoff wait
-	if _, ok := registry.Load(p.Config.ServiceDir); !ok {
-		// Check if it was intentionally stopped during backoff
+	// After the backoff sleep, a new deploy may have started — only restart if we are still current
+	if !isCurrentProcess(p) {
+		logger.Info(fmt.Sprintf("🔄 Backoff completed for '%s' but a newer deploy is active — not restarting", p.Config.ServiceName), p.Config)
 		return
 	}
 
@@ -510,4 +531,15 @@ func formatUptime(d time.Duration) string {
 		return fmt.Sprintf("%dd%dh%dm", days, hours, mins)
 	}
 	return fmt.Sprintf("%dh%dm", hours, mins)
+}
+
+// isCurrentProcess returns true if p is still the active registered process for its service.
+// Watchdog goroutines call this before taking any action so that stale goroutines
+// from a previous deploy silently exit instead of interfering with a newer deploy.
+func isCurrentProcess(p *ManagedProcess) bool {
+	val, ok := registry.Load(p.Config.ServiceDir)
+	if !ok {
+		return false // service was intentionally stopped
+	}
+	return val.(*ManagedProcess) == p // pointer equality — must be the exact same instance
 }
