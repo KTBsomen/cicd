@@ -84,25 +84,6 @@ func StartAppProcess(cfg *parser.Config) error {
 		return nil // Not an error
 	}
 
-	// EC-1: Check if process is already alive via PID file (daemon restart case)
-	if oldPID > 0 {
-		if isProcessAlive(oldPID) {
-			logger.Info(fmt.Sprintf("♻️  Re-adopting existing process PID %d (still alive from before restart)", oldPID), cfg)
-			proc := &ManagedProcess{
-				Config:    cfg,
-				StartTime: time.Now(),
-				Mode:      RunModeDelegating,
-				ExtPID:    oldPID,
-			}
-			registry.Store(cfg.ServiceDir, proc)
-			// Write PID back (it was deleted above, but process is alive)
-			writePIDFile(pidPath, oldPID, cfg.ServiceUser)
-			go watchSinglePID(proc)
-			return nil
-		}
-		// PID file exists but process dead — proceed to start fresh
-	}
-
 	// 1. Kill any existing instance of this service
 	StopAppProcess(cfg.ServiceDir)
 
@@ -191,6 +172,8 @@ func StartAppProcess(cfg *parser.Config) error {
 
 // StopAppProcess safely terminates a running app and its children
 func StopAppProcess(id string) {
+	pidPath := filepath.Join(id, ".cicdlog", "app.pid")
+
 	if val, ok := registry.Load(id); ok {
 		proc := val.(*ManagedProcess)
 
@@ -219,11 +202,20 @@ func StopAppProcess(id string) {
 				killProcessGroup(proc.Cmd)
 			}
 		}
-
-		// Clean up PID file
-		pidPath := filepath.Join(id, ".cicdlog", "app.pid")
-		os.Remove(pidPath)
+	} else {
+		// Fallback: Check app.pid directly if process is not in in-memory registry
+		if oldPID := readPIDFile(pidPath); oldPID > 0 && isProcessAlive(oldPID) {
+			logger.Info(fmt.Sprintf("🛑 Stopping process PID %d found in app.pid", oldPID), nil)
+			if p, err := os.FindProcess(oldPID); err == nil {
+				p.Signal(os.Interrupt)
+				time.Sleep(2 * time.Second)
+				p.Kill()
+			}
+		}
 	}
+
+	// Clean up PID file
+	os.Remove(pidPath)
 }
 
 // monitorProcess watches the bash process and detects the correct tier on exit

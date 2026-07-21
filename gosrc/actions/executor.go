@@ -145,11 +145,15 @@ func RunAsUserWithContext(ctx context.Context, cfg *parser.Config, command strin
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = cfg.ServiceDir
 	cmd.Env = append(os.Environ(), "HOME="+u.HomeDir, "USER="+u.Username)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	setPlatformAttributes(cmd, uint32(uidInt), uint32(gidInt))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s", strings.ReplaceAll(fmt.Sprintf("command '%s %v' failed: %v", command, args, err), cfg.GitPassword, "****"))
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		outStr := strings.TrimSpace(string(output))
+		if cfg.GitPassword != "" {
+			outStr = strings.ReplaceAll(outStr, cfg.GitPassword, "****")
+		}
+		return fmt.Errorf("command '%s %v' failed: %v (output: %s)", command, args, err, outStr)
 	}
 	return nil
 }
@@ -219,7 +223,7 @@ func writeSeparator(f *os.File, title, service string) {
 //  SyncRepo — EC-2, EC-7, EC-15
 // ═══════════════════════════════════════════════════════
 
-func SyncRepo(cfg *parser.Config) error {
+func SyncRepo(cfg *parser.Config, commitHash string) error {
 	codebasePath := filepath.Join(cfg.ServiceDir, "codebase")
 
 	// F12: Disk space check
@@ -261,23 +265,79 @@ func SyncRepo(cfg *parser.Config) error {
 
 	if _, err := os.Stat(filepath.Join(codebasePath, ".git")); os.IsNotExist(err) {
 		logger.Info("Cloning repository into codebase/...", cfg)
+		// Clean any previous partial/failed clone files in codebase directory
+		os.RemoveAll(codebasePath)
+		os.MkdirAll(codebasePath, 0755)
+		if u != nil {
+			uid, _ := strconv.Atoi(u.Uid)
+			gid, _ := strconv.Atoi(u.Gid)
+			os.Chown(codebasePath, uid, gid)
+		}
+
 		oldDir := cfg.ServiceDir
 		cfg.ServiceDir = codebasePath
-		err := RunAsUserWithContext(ctx, cfg, "git", "clone", repoURL, ".")
+		branchToClone := cfg.Branch
+		if branchToClone == "" {
+			branchToClone = "main"
+		}
+		// Attempt clone with explicit branch first
+		err := RunAsUserWithContext(ctx, cfg, "git", "clone", "--branch", branchToClone, repoURL, ".")
+		if err != nil {
+			logger.Warn(fmt.Sprintf("⚠️  git clone --branch %s failed: %v. Retrying default branch clone...", branchToClone, err), cfg)
+			err = RunAsUserWithContext(ctx, cfg, "git", "clone", repoURL, ".")
+		}
 		cfg.ServiceDir = oldDir
-		return err
+		if err != nil {
+			return fmt.Errorf("git clone failed: %v", err)
+		}
+		if commitHash != "" {
+			cfg.ServiceDir = codebasePath
+			_ = RunAsUserWithContext(ctx, cfg, "git", "checkout", commitHash)
+			cfg.ServiceDir = oldDir
+		}
+		return nil
 	}
 
-	// EC-2: Reset tracked file modifications before pull (preserves node_modules)
-	logger.Info("🧹 Resetting working tree before pull...", cfg)
+	// For existing repo: update remote URL with current credentials
 	oldDir := cfg.ServiceDir
 	cfg.ServiceDir = codebasePath
 	defer func() { cfg.ServiceDir = oldDir }()
 
-	RunAsUserWithContext(ctx, cfg, "git", "reset", "--hard", "HEAD")
-	// EC-4: Reset to branch tip for correct state after rollback
-	RunAsUserWithContext(ctx, cfg, "git", "fetch", "origin", cfg.Branch)
-	return RunAsUserWithContext(ctx, cfg, "git", "reset", "--hard", "origin/"+cfg.Branch)
+	_ = RunAsUserWithContext(ctx, cfg, "git", "remote", "set-url", "origin", repoURL)
+
+	branchToFetch := cfg.Branch
+	if branchToFetch == "" {
+		branchToFetch = "main"
+	}
+
+	logger.Info(fmt.Sprintf("🧹 Syncing repository for branch '%s'...", branchToFetch), cfg)
+
+	// Reset local changes
+	_ = RunAsUserWithContext(ctx, cfg, "git", "reset", "--hard", "HEAD")
+
+	// Fetch latest from origin
+	if err := RunAsUserWithContext(ctx, cfg, "git", "fetch", "origin", branchToFetch); err != nil {
+		logger.Warn(fmt.Sprintf("⚠️ git fetch origin %s returned error: %v. Retrying full fetch...", branchToFetch, err), cfg)
+		if errFetch := RunAsUserWithContext(ctx, cfg, "git", "fetch", "--all"); errFetch != nil {
+			return fmt.Errorf("git fetch failed: %v", errFetch)
+		}
+	}
+
+	// Reset to target commit or branch tip
+	target := "origin/" + branchToFetch
+	if commitHash != "" {
+		target = commitHash
+	}
+
+	if err := RunAsUserWithContext(ctx, cfg, "git", "reset", "--hard", target); err != nil {
+		logger.Warn(fmt.Sprintf("⚠️ git reset --hard %s failed: %v. Falling back to origin/%s...", target, err, branchToFetch), cfg)
+		if errFallback := RunAsUserWithContext(ctx, cfg, "git", "reset", "--hard", "origin/"+branchToFetch); errFallback != nil {
+			return fmt.Errorf("git reset failed: %v", errFallback)
+		}
+	}
+
+	logger.Info(fmt.Sprintf("✅ Repository synced successfully to %s", target), cfg)
+	return nil
 }
 
 // ═══════════════════════════════════════════════════════
@@ -655,7 +715,7 @@ func FullDeployPipeline(cfg *parser.Config, commitHash, commitMsg string) {
 	projectID, _ := database.GetProjectIDByDir(cfg.ServiceDir)
 	database.SetDeployStatusByDir(cfg.ServiceDir, "deploying")
 
-	if err := SyncRepo(cfg); err != nil {
+	if err := SyncRepo(cfg, commitHash); err != nil {
 		logger.Error("Sync Failed: "+err.Error(), cfg)
 		database.SetDeployStatusByDir(cfg.ServiceDir, "failed")
 		Notify(cfg, "🔥 Sync Failed", fmt.Sprintf("Repository synchronization failed for '%s': %v", cfg.ServiceName, err))

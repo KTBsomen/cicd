@@ -37,10 +37,13 @@ func patchShellScript(srcPath, dstPath string) (string, error) {
 		scriptName = "run.sh"
 	}
 
-	// ── Pass 1: inject set -e / set -o pipefail ──────────────────────────
-	content, flagsInjected := injectSafetyFlags(content, scriptName)
-	if flagsInjected {
-		needsPatch = true
+	// ── Pass 1: inject set -e (for install.sh build scripts only) ─────────
+	if scriptName == "install.sh" {
+		var flagsInjected bool
+		content, flagsInjected = injectSafetyFlags(content, scriptName)
+		if flagsInjected {
+			needsPatch = true
+		}
 	}
 
 	// ── Pass 2: normalize sudo -A placement ──────────────────────────────
@@ -70,20 +73,16 @@ func injectSafetyFlags(content string, scriptName string) (string, bool) {
 	hasSetE := strings.Contains(content, "set -e") ||
 		strings.Contains(content, "set -eo") ||
 		strings.Contains(content, "set -xe")
-	hasPipefail := strings.Contains(content, "pipefail")
 
-	if hasSetE && hasPipefail {
+	if hasSetE {
 		return content, false // nothing to do
 	}
 
 	var inject strings.Builder
 	fmt.Fprintf(&inject, "\n# --- injected by CICD (%s): ensure non-zero exit on failure ---\n", scriptName)
 	if !hasSetE {
-		inject.WriteString("set -eo pipefail       # exit immediately on any command failure\n")
+		inject.WriteString("set -e       # exit immediately on any command failure\n")
 	}
-	// if !hasPipefail {
-	// 	inject.WriteString("set -o pipefail # catch failures inside pipes\n")
-	// }
 	inject.WriteString("# -----------------------------------------------------------\n")
 
 	lines := strings.SplitAfter(content, "\n")
