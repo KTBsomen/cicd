@@ -7,6 +7,11 @@
     <title>🛰️ CICD Orchestrator | Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- xterm.js Terminal Emulator -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
     <link
         href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono&display=swap"
         rel="stylesheet">
@@ -637,6 +642,19 @@
                                         <p class="text-[10px] text-zinc-500 truncate mt-0.5"
                                             x-text="p.last_commit_msg || ''"></p>
                                     </div>
+                                    <!-- Quick Project Tools -->
+                                    <div class="flex gap-2 mb-2">
+                                        <button @click.stop="openTerminal(p)"
+                                            class="flex-1 bg-zinc-900/90 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:border-cyan-400 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-1.5 shadow-sm">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                            Terminal
+                                        </button>
+                                        <button @click.stop="openEditor(p, '.env')"
+                                            class="flex-1 bg-zinc-900/90 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:border-purple-400 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-1.5 shadow-sm">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                            Files / .env
+                                        </button>
+                                    </div>
                                     <div class="flex gap-2 transition-all">
                                         <button @click.stop="viewHistory(p)"
                                             class="flex-1 bg-zinc-800 hover:bg-zinc-700 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">History</button>
@@ -660,22 +678,30 @@
                                                 </svg>
                                             </button>
                                             <div x-show="open" @click.away="open = false"
-                                                class="absolute bottom-full right-0 mb-2 w-48 glass rounded-2xl border border-white/10 p-2 z-50">
+                                                class="absolute bottom-full right-0 mb-2 w-52 glass rounded-2xl border border-white/10 p-2 z-50">
+                                                <button @click="openTerminal(p)"
+                                                    class="w-full text-left p-2.5 text-xs font-bold text-cyan-400 hover:bg-cyan-500/10 rounded-xl transition flex items-center gap-2">
+                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                                    Open Terminal (PTY)
+                                                </button>
+                                                <button @click="openEditor(p, '.env')"
+                                                    class="w-full text-left p-2.5 text-xs font-bold text-purple-400 hover:bg-purple-500/10 rounded-xl transition flex items-center gap-2">
+                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                                    Edit Files & .env
+                                                </button>
+                                                <div class="h-[1px] bg-white/5 my-1.5"></div>
                                                 <button @click="openEditModal(p)"
-                                                    class="w-full text-left p-3 text-xs font-bold text-zinc-400 hover:bg-white/5 rounded-xl transition">Edit
+                                                    class="w-full text-left p-2.5 text-xs font-bold text-zinc-400 hover:bg-white/5 rounded-xl transition">Edit
                                                     Configuration</button>
                                                 <button @click="stopProject(p)"
-                                                    class="w-full text-left p-3 text-xs font-bold text-rose-500 hover:bg-rose-500/10 rounded-xl transition">Stop
+                                                    class="w-full text-left p-2.5 text-xs font-bold text-rose-500 hover:bg-rose-500/10 rounded-xl transition">Stop
                                                     Process</button>
                                                 <button @click="forceReinstall(p)"
-                                                    class="w-full text-left p-3 text-xs font-bold text-amber-500 hover:bg-amber-500/10 rounded-xl transition">Force
+                                                    class="w-full text-left p-2.5 text-xs font-bold text-amber-500 hover:bg-amber-500/10 rounded-xl transition">Force
                                                     Reinstall</button>
-                                                <button @click="runCustomCommand(p)"
-                                                    class="w-full text-left p-3 text-xs font-bold text-zinc-400 hover:bg-white/5 rounded-xl transition">Run
-                                                    Bash Command</button>
-                                                <div class="h-[1px] bg-white/5 my-2"></div>
+                                                <div class="h-[1px] bg-white/5 my-1.5"></div>
                                                 <button @click="deleteProject(p)"
-                                                    class="w-full text-left p-3 text-xs font-bold text-zinc-600 hover:text-white hover:bg-rose-600 rounded-xl transition">Delete
+                                                    class="w-full text-left p-2.5 text-xs font-bold text-zinc-600 hover:text-white hover:bg-rose-600 rounded-xl transition">Delete
                                                     Forever</button>
                                             </div>
                                         </div>
@@ -723,6 +749,204 @@
                 </div>
             </template>
         </main>
+
+        <!-- INTERACTIVE TERMINAL (PTY) MODAL -->
+        <div x-show="showTerminalModal" class="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-6" x-transition x-cloak>
+            <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="closeTerminal()"></div>
+            <div :class="terminalFullscreen ? 'fixed inset-2 rounded-[2rem]' : 'max-w-5xl h-[80vh] rounded-[2.5rem] w-full'"
+                 class="glass border border-white/10 shadow-2xl relative z-10 flex flex-col overflow-hidden transition-all duration-300">
+                
+                <!-- Terminal Header Bar -->
+                <div class="px-6 py-4 bg-zinc-950/80 border-b border-white/5 flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full" :class="terminalConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse' : 'bg-rose-500'"></span>
+                            <span class="text-xs font-black tracking-widest uppercase text-white font-mono" x-text="terminalProject?.service_name + ' Shell'"></span>
+                        </div>
+                        <span class="text-[10px] px-2.5 py-0.5 rounded-full font-mono font-semibold"
+                              :class="terminalConnected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'"
+                              x-text="terminalConnected ? 'PTY Active' : (terminalConnecting ? 'Connecting...' : 'Disconnected')"></span>
+                        <span class="text-[10px] font-mono text-zinc-500 hidden sm:inline" x-text="terminalProject?.service_dir"></span>
+                    </div>
+                    
+                    <!-- Toolbar Actions -->
+                    <div class="flex items-center gap-2">
+                        <button @click="openEditor(terminalProject, '.env')" 
+                                class="bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 shadow-sm">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            Edit .env
+                        </button>
+                        <button @click="openEditor(terminalProject)" 
+                                class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition flex items-center gap-1.5">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                            Files
+                        </button>
+                        <button @click="sendCtrlC()" title="Send Ctrl+C (Interrupt)"
+                                class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1.5 rounded-xl text-[10px] font-bold font-mono transition">
+                            ^C
+                        </button>
+                        <button @click="clearTerminal()" title="Clear Terminal Screen"
+                                class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1.5 rounded-xl text-[10px] font-bold font-mono transition">
+                            Clear
+                        </button>
+                        <button @click="terminalFullscreen = !terminalFullscreen; $nextTick(() => { if (fitAddon) fitAddon.fit(); sendTerminalResize(); })" 
+                                class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 p-2 rounded-xl text-xs transition" title="Toggle Fullscreen">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                            </svg>
+                        </button>
+                        <button @click="closeTerminal()" class="bg-zinc-800 hover:bg-rose-600 text-zinc-400 hover:text-white p-2 rounded-xl transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Terminal Body (xterm container) -->
+                <div class="flex-1 p-4 bg-[#09090b] overflow-hidden relative">
+                    <div id="terminal-container" class="w-full h-full"></div>
+                </div>
+
+                <!-- Footer info bar -->
+                <div class="px-6 py-2 bg-zinc-950/90 border-t border-white/5 flex items-center justify-between text-[11px] text-zinc-500 font-mono">
+                    <span>💡 Interception active: Run <code class="text-cyan-400 bg-white/5 px-1.5 py-0.5 rounded">nano &lt;filename&gt;</code> or <code class="text-cyan-400 bg-white/5 px-1.5 py-0.5 rounded">edit &lt;filename&gt;</code> to open directly in Custom Web Editor!</span>
+                    <span x-text="terminalProject?.service_user ? 'User: ' + terminalProject.service_user : ''"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- CUSTOM WEB FILE & ENV EDITOR MODAL -->
+        <div x-show="showEditorModal" class="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6" x-transition x-cloak>
+            <div class="absolute inset-0 bg-zinc-950/90 backdrop-blur-xl" @click="closeEditorModal()"></div>
+            <div class="glass border border-white/10 shadow-2xl relative z-10 flex flex-col w-full max-w-6xl h-[88vh] rounded-[2.5rem] overflow-hidden">
+                
+                <!-- Editor Header Bar -->
+                <div class="px-6 py-4 bg-zinc-950/80 border-b border-white/5 flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 flex-shrink-0">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-sm font-black text-white tracking-wide uppercase font-mono truncate" x-text="editorFileName()"></h3>
+                                <span :class="editorIsDirty ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'"
+                                      class="text-[9px] font-mono px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider"
+                                      x-text="editorIsDirty ? 'Unsaved' : 'Saved'"></span>
+                            </div>
+                            <div class="flex items-center gap-2 text-[11px] font-mono text-zinc-500 truncate mt-0.5">
+                                <span class="text-zinc-400 font-semibold" x-text="editorProject?.service_name"></span>
+                                <span>•</span>
+                                <span class="truncate text-cyan-400/90 font-mono" x-text="editorFullPath || editorFilePath"></span>
+                                <button @click="copyToClipboard(editorFullPath || editorFilePath); notify('Path copied to clipboard')" title="Copy path" class="hover:text-white transition">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Controls -->
+                    <div class="flex items-center gap-2">
+                        <button @click="saveFile()" :disabled="editorSaving"
+                                class="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-cyan-500/20 flex items-center gap-2 transition disabled:opacity-50">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                            <span x-text="editorSaving ? 'Saving...' : 'Save (Ctrl+S)'"></span>
+                        </button>
+                        <button @click="loadFile(editorFilePath)" title="Reload from disk"
+                                class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 p-2 rounded-xl text-xs transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        </button>
+                        <button @click="editorShowBrowser = !editorShowBrowser" title="Toggle File Browser"
+                                :class="editorShowBrowser ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-zinc-800 text-zinc-300'"
+                                class="p-2 rounded-xl text-xs transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                        </button>
+                        <button @click="closeEditorModal()" class="bg-zinc-800 hover:bg-rose-600 text-zinc-400 hover:text-white p-2 rounded-xl transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quick File Switcher Bar -->
+                <div class="px-6 py-2 bg-zinc-900/60 border-b border-white/5 flex items-center gap-2 overflow-x-auto text-xs">
+                    <span class="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mr-2 flex items-center gap-1 flex-shrink-0">
+                        <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span> Quick Files:
+                    </span>
+                    <template x-for="qf in editorQuickFiles" :key="qf.name">
+                        <button @click="loadFile(qf.path)"
+                                :class="editorFilePath === qf.path ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm' : (qf.exists ? 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 border-white/5' : 'bg-zinc-900/40 text-zinc-500 hover:bg-zinc-800 border-dashed border-white/10')"
+                                class="px-2.5 py-1 rounded-lg border font-mono text-[11px] transition flex items-center gap-1.5 flex-shrink-0">
+                            <span x-text="qf.name"></span>
+                            <span x-show="!qf.exists" class="text-[9px] text-zinc-600">(create)</span>
+                        </button>
+                    </template>
+                    <button @click="promptNewFile()" class="px-2.5 py-1 rounded-lg bg-zinc-800/50 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[11px] font-mono border border-white/5 flex items-center gap-1 ml-auto flex-shrink-0">
+                        <span>+ New File</span>
+                    </button>
+                </div>
+
+                <!-- Main Workspace: File Browser + Editor Area -->
+                <div class="flex-1 flex overflow-hidden relative">
+                    <!-- File Browser Sidebar (Collapsible) -->
+                    <div x-show="editorShowBrowser" class="w-64 border-r border-white/5 bg-zinc-950/60 flex flex-col flex-shrink-0 transition-all">
+                        <div class="p-3 border-b border-white/5 flex items-center justify-between">
+                            <span class="text-[10px] font-mono uppercase tracking-widest text-zinc-400 font-bold">Project Files</span>
+                            <button @click="refreshFileList()" class="text-zinc-500 hover:text-white text-xs">↻</button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-2 space-y-1 font-mono text-xs">
+                            <template x-for="f in editorFiles" :key="f.path">
+                                <div @click="f.is_dir ? browseDir(f.path) : loadFile(f.path)"
+                                     :class="editorFilePath === f.path ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-zinc-400 hover:bg-white/5 hover:text-white'"
+                                     class="p-2 rounded-lg cursor-pointer flex items-center gap-2 transition truncate">
+                                    <span x-text="f.is_dir ? '📁' : (f.name.startsWith('.env') ? '⚡' : '📄')"></span>
+                                    <span class="truncate" x-text="f.name"></span>
+                                    <span x-show="!f.is_dir" class="ml-auto text-[9px] text-zinc-600" x-text="formatFileSize(f.size)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Editor Canvas with Line Numbers -->
+                    <div class="flex-1 flex flex-col overflow-hidden bg-[#0a0a0c]">
+                        <div class="flex-1 flex relative overflow-hidden">
+                            <!-- Line Numbers Gutter -->
+                            <div id="editor-gutter" class="w-12 py-3 bg-zinc-950/90 text-right pr-3 select-none font-mono text-xs text-zinc-600 border-r border-white/5 overflow-hidden">
+                                <template x-for="line in editorLineCount" :key="line">
+                                    <div class="leading-6" x-text="line"></div>
+                                </template>
+                            </div>
+                            <!-- Text Area -->
+                            <textarea id="custom-web-editor-area"
+                                      x-model="editorContent"
+                                      @input="onEditorInput()"
+                                      @scroll="syncEditorScroll()"
+                                      @keydown="handleEditorKeyDown($event)"
+                                      placeholder="File content..."
+                                      spellcheck="false"
+                                      class="flex-1 p-3 bg-transparent text-zinc-200 font-mono text-xs leading-6 resize-none focus:outline-none overflow-auto border-none"></textarea>
+                        </div>
+
+                        <!-- Editor Footer / Status Bar -->
+                        <div class="px-6 py-2 bg-zinc-950/90 border-t border-white/5 flex items-center justify-between text-[11px] font-mono text-zinc-500">
+                            <div class="flex items-center gap-4">
+                                <span x-text="editorLineCount + ' lines'"></span>
+                                <span>•</span>
+                                <span x-text="(editorContent ? editorContent.length : 0) + ' chars'"></span>
+                                <span>•</span>
+                                <span x-text="formatFileSize(editorContent ? editorContent.length : 0)"></span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-cyan-400">UTF-8</span>
+                                <span>•</span>
+                                <span class="text-zinc-400">Tabs: 2 spaces</span>
+                                <span>•</span>
+                                <span class="text-emerald-400">Protected Mode</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- COMMIT HISTORY MODAL -->
         <div x-show="showHistoryModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6" x-transition
@@ -1324,6 +1548,33 @@
                 showHistoryModal: false,
                 showSettingsModal: false,
                 showPortsModal: false,
+
+                // TERMINAL STATE
+                showTerminalModal: false,
+                terminalProject: null,
+                terminalConnected: false,
+                terminalConnecting: false,
+                terminalFullscreen: false,
+                terminalSocket: null,
+                term: null,
+                fitAddon: null,
+
+                // CUSTOM WEB FILE & ENV EDITOR STATE
+                showEditorModal: false,
+                editorProject: null,
+                editorFilePath: '.env',
+                editorFullPath: '',
+                editorContent: '',
+                editorOriginalContent: '',
+                editorIsDirty: false,
+                editorSaving: false,
+                editorLoading: false,
+                editorQuickFiles: [],
+                editorFiles: [],
+                editorCurrentDir: '',
+                editorShowBrowser: false,
+                editorLineCount: 1,
+
                 systemLogsActive: false,
                 activeLogs: '',
                 logStream: null,
@@ -1837,12 +2088,376 @@
                     return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 },
 
+                // --- INTERACTIVE TERMINAL EMULATION ---
+                async openTerminal(p) {
+                    this.terminalProject = p;
+                    this.showTerminalModal = true;
+                    this.terminalConnecting = true;
+                    this.terminalConnected = false;
+
+                    await this.$nextTick();
+
+                    const container = document.getElementById('terminal-container');
+                    if (!container) return;
+
+                    // Clean up any existing terminal instance
+                    if (this.term) {
+                        try { this.term.dispose(); } catch (e) { }
+                        this.term = null;
+                    }
+                    if (this.terminalSocket) {
+                        try { this.terminalSocket.close(); } catch (e) { }
+                        this.terminalSocket = null;
+                    }
+                    container.innerHTML = '';
+
+                    // Initialize xterm.js
+                    this.term = new Terminal({
+                        cursorBlink: true,
+                        cursorStyle: 'block',
+                        fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+                        fontSize: 13,
+                        lineHeight: 1.3,
+                        theme: {
+                            background: '#09090b',
+                            foreground: '#f4f4f5',
+                            cursor: '#22d3ee',
+                            selectionBackground: 'rgba(34, 211, 238, 0.3)',
+                            black: '#18181b',
+                            red: '#f43f5e',
+                            green: '#10b981',
+                            yellow: '#fbbf24',
+                            blue: '#3b82f6',
+                            magenta: '#a855f7',
+                            cyan: '#22d3ee',
+                            white: '#f4f4f5',
+                            brightBlack: '#71717a',
+                            brightRed: '#fb7185',
+                            brightGreen: '#34d399',
+                            brightYellow: '#fde047',
+                            brightBlue: '#60a5fa',
+                            brightMagenta: '#c084fc',
+                            brightCyan: '#67e8f9',
+                            brightWhite: '#ffffff'
+                        }
+                    });
+
+                    if (window.FitAddon && window.FitAddon.FitAddon) {
+                        this.fitAddon = new window.FitAddon.FitAddon();
+                        this.term.loadAddon(this.fitAddon);
+                    }
+                    if (window.WebLinksAddon && window.WebLinksAddon.WebLinksAddon) {
+                        this.term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
+                    }
+
+                    this.term.open(container);
+                    if (this.fitAddon) {
+                        this.fitAddon.fit();
+                    }
+
+                    // Build WebSocket URL
+                    const port = this.settings.webhook_port || 9641;
+                    const host = this.selectedIP || window.location.hostname || 'localhost';
+                    const token = localStorage.getItem('cicd_token') || '';
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${host}:${port}/api/projects/${p.id}/terminal?token=${encodeURIComponent(token)}`;
+
+                    try {
+                        this.terminalSocket = new WebSocket(wsUrl);
+                        this.terminalSocket.binaryType = 'arraybuffer';
+
+                        this.terminalSocket.onopen = () => {
+                            this.terminalConnecting = false;
+                            this.terminalConnected = true;
+                            if (this.fitAddon) {
+                                this.fitAddon.fit();
+                                this.sendTerminalResize();
+                            }
+                            this.term.focus();
+                        };
+
+                        this.terminalSocket.onmessage = (event) => {
+                            let text = '';
+                            if (typeof event.data === 'string') {
+                                text = event.data;
+                            } else {
+                                text = new TextDecoder('utf-8').decode(event.data);
+                            }
+
+                            // Check for nano/vim interception token
+                            const match = text.match(/___CICD_EDIT_FILE___:([^\r\n]+)/);
+                            if (match) {
+                                const filePath = match[1].trim();
+                                this.term.write(`\r\n\x1b[36m[Custom Web Editor]\x1b[0m Intercepted edit request for: \x1b[33m${filePath}\x1b[0m\r\n`);
+                                this.openEditor(this.terminalProject, filePath);
+                                return;
+                            }
+
+                            this.term.write(text);
+                        };
+
+                        this.terminalSocket.onclose = () => {
+                            this.terminalConnected = false;
+                            this.terminalConnecting = false;
+                            if (this.term) {
+                                this.term.write('\r\n\x1b[31m[Session Disconnected]\x1b[0m\r\n');
+                            }
+                        };
+
+                        this.terminalSocket.onerror = (err) => {
+                            this.terminalConnected = false;
+                            this.terminalConnecting = false;
+                            if (this.term) {
+                                this.term.write('\r\n\x1b[31m[Terminal Connection Error]\x1b[0m\r\n');
+                            }
+                        };
+
+                        // Send user input to WebSocket
+                        this.term.onData((data) => {
+                            if (this.terminalSocket && this.terminalSocket.readyState === WebSocket.OPEN) {
+                                this.terminalSocket.send(data);
+                            }
+                        });
+
+                        // Window resize listener
+                        window.onresize = () => {
+                            if (this.showTerminalModal && this.fitAddon) {
+                                this.fitAddon.fit();
+                                this.sendTerminalResize();
+                            }
+                        };
+
+                    } catch (e) {
+                        this.notify("Failed to connect terminal: " + e.message, "error");
+                    }
+                },
+
+                sendTerminalResize() {
+                    if (this.term && this.terminalSocket && this.terminalSocket.readyState === WebSocket.OPEN) {
+                        const payload = JSON.stringify({
+                            type: 'resize',
+                            cols: this.term.cols,
+                            rows: this.term.rows
+                        });
+                        this.terminalSocket.send(payload);
+                    }
+                },
+
+                sendCtrlC() {
+                    if (this.terminalSocket && this.terminalSocket.readyState === WebSocket.OPEN) {
+                        this.terminalSocket.send('\x03');
+                    }
+                },
+
+                clearTerminal() {
+                    if (this.term) {
+                        this.term.clear();
+                    }
+                },
+
+                closeTerminal() {
+                    if (this.terminalSocket) {
+                        try { this.terminalSocket.close(); } catch (e) { }
+                        this.terminalSocket = null;
+                    }
+                    if (this.term) {
+                        try { this.term.dispose(); } catch (e) { }
+                        this.term = null;
+                    }
+                    this.showTerminalModal = false;
+                    this.terminalConnected = false;
+                    this.terminalConnecting = false;
+                    this.terminalFullscreen = false;
+                },
+
+                // --- CUSTOM WEB FILE & ENV EDITOR ---
+                async openEditor(p, targetPath = '.env') {
+                    this.editorProject = p;
+                    this.showEditorModal = true;
+                    this.editorShowBrowser = false;
+                    await this.loadFile(targetPath);
+                    this.refreshFileList();
+                },
+
+                async loadFile(filePath) {
+                    if (!this.editorProject) return;
+                    if (this.editorIsDirty && !confirm("You have unsaved changes. Discard and open " + filePath + "?")) {
+                        return;
+                    }
+
+                    this.editorLoading = true;
+                    this.editorFilePath = filePath;
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+
+                    try {
+                        const res = await this.apiCall(`${baseUrl}/api/projects/${this.editorProject.id}/file?path=${encodeURIComponent(filePath)}`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.editorFullPath = data.full_path || '';
+                            this.editorContent = data.content || '';
+                            this.editorOriginalContent = this.editorContent;
+                            this.editorIsDirty = false;
+                            this.updateLineCount();
+                        } else {
+                            const errText = await res.text();
+                            this.notify("Failed to open file: " + errText, "error");
+                        }
+                    } catch (e) {
+                        this.notify("Error loading file: " + e.message, "error");
+                    } finally {
+                        this.editorLoading = false;
+                        this.$nextTick(() => {
+                            const area = document.getElementById('custom-web-editor-area');
+                            if (area) area.focus();
+                        });
+                    }
+                },
+
+                async saveFile() {
+                    if (!this.editorProject || !this.editorFilePath) return;
+                    this.editorSaving = true;
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+
+                    try {
+                        const res = await this.apiCall(`${baseUrl}/api/projects/${this.editorProject.id}/file`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                path: this.editorFilePath,
+                                content: this.editorContent
+                            })
+                        });
+
+                        if (res.ok) {
+                            this.editorOriginalContent = this.editorContent;
+                            this.editorIsDirty = false;
+                            this.notify(`✓ Saved ${this.editorFileName()} successfully!`);
+
+                            // If terminal is open, announce to terminal
+                            if (this.term) {
+                                this.term.write(`\r\n\x1b[32m[Custom Web Editor] Successfully saved: ${this.editorFilePath}\x1b[0m\r\n`);
+                            }
+                            this.refreshFileList();
+                        } else {
+                            const errData = await res.json().catch(() => ({}));
+                            this.notify("Save failed: " + (errData.error || res.statusText), "error");
+                        }
+                    } catch (e) {
+                        this.notify("Save error: " + e.message, "error");
+                    } finally {
+                        this.editorSaving = false;
+                    }
+                },
+
+                async refreshFileList(subDir = '') {
+                    if (!this.editorProject) return;
+                    const port = this.settings.webhook_port || 9641;
+                    const baseUrl = `http://${this.selectedIP}:${port}`;
+                    try {
+                        const res = await this.apiCall(`${baseUrl}/api/projects/${this.editorProject.id}/files?path=${encodeURIComponent(subDir)}`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.editorFiles = data.files || [];
+                            this.editorQuickFiles = data.quick_files || [];
+                            this.editorCurrentDir = data.current_path || '';
+                        }
+                    } catch (e) { }
+                },
+
+                browseDir(dirPath) {
+                    this.refreshFileList(dirPath);
+                },
+
+                promptNewFile() {
+                    const name = prompt("Enter new file path (e.g. .env, config.json, script.sh):");
+                    if (!name) return;
+                    this.editorFilePath = name.trim();
+                    this.editorFullPath = (this.editorProject?.service_dir || '') + '/' + this.editorFilePath;
+                    this.editorContent = '';
+                    this.editorOriginalContent = '';
+                    this.editorIsDirty = true;
+                    this.updateLineCount();
+                },
+
+                closeEditorModal() {
+                    if (this.editorIsDirty && !confirm("You have unsaved changes! Are you sure you want to close?")) {
+                        return;
+                    }
+                    this.showEditorModal = false;
+                    this.editorIsDirty = false;
+                    // If terminal is active, refocus it
+                    if (this.showTerminalModal && this.term) {
+                        this.term.focus();
+                    }
+                },
+
+                onEditorInput() {
+                    this.editorIsDirty = (this.editorContent !== this.editorOriginalContent);
+                    this.updateLineCount();
+                },
+
+                updateLineCount() {
+                    const lines = (this.editorContent || '').split('\n').length;
+                    this.editorLineCount = Math.max(lines, 1);
+                },
+
+                syncEditorScroll() {
+                    const area = document.getElementById('custom-web-editor-area');
+                    const gutter = document.getElementById('editor-gutter');
+                    if (area && gutter) {
+                        gutter.scrollTop = area.scrollTop;
+                    }
+                },
+
+                handleEditorKeyDown(e) {
+                    // Ctrl+S or Cmd+S -> Save
+                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                        e.preventDefault();
+                        this.saveFile();
+                        return;
+                    }
+                    // Tab key -> insert 2 spaces
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        const textarea = e.target;
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        this.editorContent = this.editorContent.substring(0, start) + '  ' + this.editorContent.substring(end);
+                        this.$nextTick(() => {
+                            textarea.selectionStart = textarea.selectionEnd = start + 2;
+                            this.onEditorInput();
+                        });
+                    }
+                },
+
+                editorFileName() {
+                    if (!this.editorFilePath) return 'Untitled';
+                    const parts = this.editorFilePath.split(/[/\\]/);
+                    return parts[parts.length - 1] || this.editorFilePath;
+                },
+
+                formatFileSize(bytes) {
+                    if (!bytes || bytes === 0) return '0 B';
+                    if (bytes < 1024) return bytes + ' B';
+                    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+                },
+
+                copyToClipboard(text) {
+                    if (!text) return;
+                    navigator.clipboard.writeText(text);
+                },
+
                 closeModals() {
                     this.showCreateModal = false;
                     this.showEditModal = false;
                     this.showSettingsModal = false;
                     this.showHistoryModal = false;
                     this.showPortsModal = false;
+                    this.closeEditorModal();
+                    this.closeTerminal();
                 }
             };
         }

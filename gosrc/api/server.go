@@ -18,12 +18,17 @@ import (
 	"slices"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"bufio"
 	"encoding/json"
 	"io"
+	"os/user"
 	"strings"
 
+	"gosrc/terminal"
+
+	"github.com/fasthttp/websocket"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
@@ -31,6 +36,7 @@ import (
 	"github.com/ktbsomen/jsjson"
 	gnet "github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/process"
+	"github.com/valyala/fasthttp"
 )
 
 //go:embed dashboard.html
@@ -38,6 +44,14 @@ var dashboardHTML []byte
 
 // jwtSecret is loaded from DB or env at startup (IF-2)
 var jwtSecret []byte
+
+var terminalUpgrader = websocket.FastHTTPUpgrader{
+	ReadBufferSize:  4096,
+	WriteBufferSize: 4096,
+	CheckOrigin: func(ctx *fasthttp.RequestCtx) bool {
+		return true
+	},
+}
 
 // StartUnifiedServer launches the single-port Gateway for Webhooks & Dashboard
 func StartUnifiedServer(cfg *parser.Config) {
@@ -681,6 +695,224 @@ func StartUnifiedServer(cfg *parser.Config) {
 		return c.SendString("Deleted")
 	})
 
+	// --- TERMINAL & FILE EDITOR API ---
+
+	// WebSocket Interactive Terminal (PTY)
+	api.Get("/projects/:id/terminal", func(c fiber.Ctx) error {
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil || project == nil {
+			return c.Status(404).SendString("Project not found")
+		}
+
+		if !websocket.FastHTTPIsWebSocketUpgrade(c.RequestCtx()) {
+			return fiber.ErrUpgradeRequired
+		}
+
+		return terminalUpgrader.Upgrade(c.RequestCtx(), func(conn *websocket.Conn) {
+			defer conn.Close()
+			handleTerminalSession(conn, project)
+		})
+	})
+
+	// List files in project directory
+	api.Get("/projects/:id/files", func(c fiber.Ctx) error {
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil || project == nil {
+			return c.Status(404).SendString("Project not found")
+		}
+
+		subPath := c.Query("path", "")
+		targetDir, err := resolveAndValidateProjectPath(project.ServiceDir, subPath)
+		if err != nil {
+			return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		entries, err := os.ReadDir(targetDir)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to read directory: %v", err)})
+		}
+
+		type FileItem struct {
+			Name    string    `json:"name"`
+			Path    string    `json:"path"`
+			IsDir   bool      `json:"is_dir"`
+			Size    int64     `json:"size"`
+			ModTime time.Time `json:"mod_time"`
+		}
+
+		var files []FileItem
+		for _, entry := range entries {
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			rel, _ := filepath.Rel(project.ServiceDir, filepath.Join(targetDir, entry.Name()))
+			files = append(files, FileItem{
+				Name:    entry.Name(),
+				Path:    filepath.ToSlash(rel),
+				IsDir:   entry.IsDir(),
+				Size:    info.Size(),
+				ModTime: info.ModTime(),
+			})
+		}
+
+		// Check presence of common/critical config files for quick access
+		quickFiles := []string{".env", ".env.local", ".env.production", ".env.example", "package.json", "go.mod", "requirements.txt", "install.sh", "run.sh"}
+		type QuickFileItem struct {
+			Name   string `json:"name"`
+			Path   string `json:"path"`
+			Exists bool   `json:"exists"`
+		}
+		var detectedQuick []QuickFileItem
+		for _, qf := range quickFiles {
+			checkPath := filepath.Join(project.ServiceDir, qf)
+			_, statErr := os.Stat(checkPath)
+			detectedQuick = append(detectedQuick, QuickFileItem{
+				Name:   qf,
+				Path:   qf,
+				Exists: statErr == nil,
+			})
+		}
+
+		relTarget, _ := filepath.Rel(project.ServiceDir, targetDir)
+		if relTarget == "." {
+			relTarget = ""
+		}
+
+		return c.JSON(fiber.Map{
+			"current_path": filepath.ToSlash(relTarget),
+			"base_dir":     project.ServiceDir,
+			"files":        files,
+			"quick_files":  detectedQuick,
+		})
+	})
+
+	// Read file content safely
+	api.Get("/projects/:id/file", func(c fiber.Ctx) error {
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil || project == nil {
+			return c.Status(404).SendString("Project not found")
+		}
+
+		reqPath := c.Query("path")
+		if reqPath == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "Missing 'path' query parameter"})
+		}
+
+		targetFile, err := resolveAndValidateProjectPath(project.ServiceDir, reqPath)
+		if err != nil {
+			return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		info, err := os.Stat(targetFile)
+		if err != nil {
+			if os.IsNotExist(err) {
+				rel, _ := filepath.Rel(project.ServiceDir, targetFile)
+				return c.JSON(fiber.Map{
+					"exists":    false,
+					"path":      filepath.ToSlash(rel),
+					"full_path": targetFile,
+					"content":   "",
+					"size":      0,
+				})
+			}
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		if info.IsDir() {
+			return c.Status(400).JSON(fiber.Map{"error": "Target is a directory, not a file"})
+		}
+
+		// Security limit: 5 MB file size limit for web editor
+		const maxEditBytes = 5 * 1024 * 1024
+		if info.Size() > maxEditBytes {
+			return c.Status(400).JSON(fiber.Map{"error": fmt.Sprintf("File size (%d bytes) exceeds maximum editor limit of 5 MB", info.Size())})
+		}
+
+		data, err := os.ReadFile(targetFile)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to read file: %v", err)})
+		}
+
+		// Ensure content is safe text / valid UTF-8
+		if !utf8.Valid(data) {
+			return c.Status(400).JSON(fiber.Map{"error": "File appears to be binary and cannot be edited as text"})
+		}
+
+		rel, _ := filepath.Rel(project.ServiceDir, targetFile)
+		return c.JSON(fiber.Map{
+			"exists":    true,
+			"path":      filepath.ToSlash(rel),
+			"full_path": targetFile,
+			"content":   string(data),
+			"size":      len(data),
+			"mod_time":  info.ModTime(),
+		})
+	})
+
+	// Save/write file content safely
+	api.Post("/projects/:id/file", func(c fiber.Ctx) error {
+		project, err := database.GetProjectByID(c.Params("id"))
+		if err != nil || project == nil {
+			return c.Status(404).SendString("Project not found")
+		}
+
+		type SaveFileRequest struct {
+			Path    string `json:"path"`
+			Content string `json:"content"`
+		}
+
+		var req SaveFileRequest
+		if err := c.Bind().JSON(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		}
+
+		if strings.TrimSpace(req.Path) == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "Path cannot be empty"})
+		}
+
+		// Security limit: 5 MB content limit
+		const maxEditBytes = 5 * 1024 * 1024
+		if len(req.Content) > maxEditBytes {
+			return c.Status(400).JSON(fiber.Map{"error": "Content exceeds 5 MB limit"})
+		}
+
+		targetFile, err := resolveAndValidateProjectPath(project.ServiceDir, req.Path)
+		if err != nil {
+			return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+		}
+
+		// Ensure parent directory exists
+		parentDir := filepath.Dir(targetFile)
+		if err := os.MkdirAll(parentDir, 0755); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to create parent directory: %v", err)})
+		}
+
+		// Write file
+		if err := os.WriteFile(targetFile, []byte(req.Content), 0644); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": fmt.Sprintf("Failed to write file: %v", err)})
+		}
+
+		// If on Linux and service user is configured, set ownership
+		if project.ServiceUser != "" {
+			if u, err := user.Lookup(project.ServiceUser); err == nil {
+				uid, _ := strconv.Atoi(u.Uid)
+				gid, _ := strconv.Atoi(u.Gid)
+				_ = os.Chown(targetFile, uid, gid)
+			}
+		}
+
+		rel, _ := filepath.Rel(project.ServiceDir, targetFile)
+		logger.Info(fmt.Sprintf("📝 File saved via web editor: %s (Project: %s)", rel, project.ServiceName), cfg)
+
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "File saved successfully",
+			"path":    filepath.ToSlash(rel),
+			"size":    len(req.Content),
+		})
+	})
+
 	// F15: Server-wide open ports
 	api.Get("/server/ports", func(c fiber.Ctx) error {
 		ports := getServerListeningPorts()
@@ -998,3 +1230,102 @@ func getServerListeningPorts() []uint32 {
 	}
 	return ports
 }
+
+// resolveAndValidateProjectPath ensures the path strictly resides within the project base directory
+func resolveAndValidateProjectPath(baseDir, requestedPath string) (string, error) {
+	if strings.Contains(requestedPath, "\x00") {
+		return "", fmt.Errorf("security violation: null byte in path")
+	}
+
+	cleanBase, err := filepath.Abs(filepath.Clean(baseDir))
+	if err != nil {
+		return "", fmt.Errorf("invalid base directory: %v", err)
+	}
+
+	// Normalize backslashes to forward slashes and strip leading slashes so paths are always project-relative
+	normReq := strings.ReplaceAll(requestedPath, "\\", "/")
+	normReq = strings.TrimLeft(normReq, "/")
+
+	targetPath := filepath.Join(cleanBase, filepath.FromSlash(normReq))
+	targetAbs, err := filepath.Abs(filepath.Clean(targetPath))
+	if err != nil {
+		return "", fmt.Errorf("invalid target path: %v", err)
+	}
+
+	basePrefix := cleanBase + string(filepath.Separator)
+	if targetAbs != cleanBase && !strings.HasPrefix(targetAbs, basePrefix) {
+		return "", fmt.Errorf("security violation: path traversal outside project directory")
+	}
+
+	// If file or target exists, verify symlink target is also within cleanBase
+	if realPath, err := filepath.EvalSymlinks(targetAbs); err == nil {
+		realAbs, _ := filepath.Abs(realPath)
+		if realAbs != cleanBase && !strings.HasPrefix(realAbs, basePrefix) {
+			return "", fmt.Errorf("security violation: symlink points outside project directory")
+		}
+	}
+
+	return targetAbs, nil
+}
+
+func handleTerminalSession(conn *websocket.Conn, project *database.Project) {
+	sess, err := terminal.NewSession(project.ServiceDir, project.ServiceUser)
+	if err != nil {
+		errMsg := fmt.Sprintf("\r\n\x1b[31m[CICD Terminal] Failed to initialize session: %v\x1b[0m\r\n", err)
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(errMsg))
+		return
+	}
+	defer sess.Close()
+
+	welcome := fmt.Sprintf("\r\n\x1b[36m⚡ Connected to \x1b[1m%s\x1b[0m\x1b[36m (User: %s, Dir: %s)\x1b[0m\r\n\x1b[90mTip: Type 'nano <file>' or 'edit <file>' to open in Custom Web Editor.\x1b[0m\r\n\r\n",
+		project.ServiceName, project.ServiceUser, project.ServiceDir)
+	_ = conn.WriteMessage(websocket.TextMessage, []byte(welcome))
+
+	done := make(chan struct{})
+
+	// Goroutine 1: Read from PTY / Session -> Write to WebSocket
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := sess.Read(buf)
+			if n > 0 {
+				if werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
+					break
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+		close(done)
+	}()
+
+	// Goroutine 2: Read from WebSocket -> Write to PTY / Session
+	go func() {
+		defer sess.Close()
+		for {
+			msgType, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if msgType == websocket.TextMessage {
+				// Check for JSON control message (e.g. resize)
+				var ctrl struct {
+					Type string `json:"type"`
+					Cols uint16 `json:"cols"`
+					Rows uint16 `json:"rows"`
+				}
+				if err := json.Unmarshal(msg, &ctrl); err == nil && ctrl.Type == "resize" && ctrl.Cols > 0 && ctrl.Rows > 0 {
+					_ = sess.Resize(ctrl.Cols, ctrl.Rows)
+					continue
+				}
+			}
+			if len(msg) > 0 {
+				_, _ = sess.Write(msg)
+			}
+		}
+	}()
+
+	<-done
+}
+
